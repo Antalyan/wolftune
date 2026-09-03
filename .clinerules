@@ -1,0 +1,18 @@
+# WolfTune Project Rules
+
+## Tech Stack
+- Framework: Next.js 14+ (App Router, TypeScript)
+- Styling: Tailwind CSS, Lucide React Icons
+- Backend & Database: Supabase (@supabase/ssr, PostgreSQL)
+- Integrations: Spotify Web API, Google OAuth
+- Deployment: Vercel
+
+## Core Guidelines
+1. Write clean, modern, fully typed TypeScript code. Avoid `any`.
+2. Follow Next.js App Router best practices (Server Components by default, Client Components only when interactive).
+3. Always implement proper error handling and environment variable checks.
+4. Keep step-by-step progress: Implement ONE feature at a time, test/verify, then move to the next.
+5. Do NOT refactor unrequested files or make breaking structural changes without asking first.
+6. Mascot & Theme: "WolfTune" (Dark mode default, accent colors: Blue & Spotify Green). Cute blue wolf mascot used.
+7. Styling: Use Tailwind CSS for styling, avoid inline styles.
+8. Planning: ask user if in doubts.
