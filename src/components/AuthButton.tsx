@@ -25,10 +25,10 @@ export function AuthButton({ user }: AuthButtonProps) {
   const initials = name.trim().charAt(0).toUpperCase();
 
   return (
-    <form action="/auth/signout" method="post">
-      <button
-        type="submit"
-        title={`Sign out ${name}`}
+    <div className="flex items-center gap-1">
+      <Link
+        href="/settings"
+        title="Account settings"
         className="flex items-center gap-2 text-sm font-medium text-zinc-300 hover:text-white px-2 py-1.5 rounded-lg hover:bg-night-700/60 transition-colors"
       >
         {avatarUrl ? (
@@ -46,8 +46,17 @@ export function AuthButton({ user }: AuthButtonProps) {
           </span>
         )}
         <span className="hidden lg:inline max-w-[8rem] truncate">{name}</span>
-        <LogOut className="w-3.5 h-3.5 text-zinc-500 hidden lg:inline" />
-      </button>
-    </form>
+      </Link>
+      <form action="/auth/signout" method="post">
+        <button
+          type="submit"
+          title={`Sign out ${name}`}
+          aria-label="Sign out"
+          className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-night-700/60 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
+      </form>
+    </div>
   );
 }

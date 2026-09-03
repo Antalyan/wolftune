@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import type { LucideIcon } from "lucide-react";
-import { Headphones, Star, Trophy, Search } from "lucide-react";
+import { Headphones, Settings, Star, Trophy, Search, Users } from "lucide-react";
 import { WolfMascot } from "./WolfMascot";
 import { AuthButton } from "./AuthButton";
 import { MobileMenu } from "./MobileMenu";
@@ -14,6 +14,7 @@ const NAV_ICONS: Record<NavLinkIcon, LucideIcon> = {
   headphones: Headphones,
   star: Star,
   trophy: Trophy,
+  users: Users,
 };
 
 export async function Navbar() {
@@ -50,19 +51,30 @@ export async function Navbar() {
 
         {/* Desktop Navigation */}
         <nav aria-label="Main navigation" className="hidden md:flex items-center gap-1">
-          {navLinks.map(({ href, label, icon, color }) => {
-            const Icon = NAV_ICONS[icon];
-            return (
-              <Link
-                key={href}
-                href={href}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-night-700/60 transition-colors"
-              >
-                <Icon className={`w-4 h-4 ${color}`} />
-                <span>{label}</span>
-              </Link>
-            );
-          })}
+          {navLinks
+            .filter((link) => !link.authOnly || user)
+            .map(({ href, label, icon, color }) => {
+              const Icon = NAV_ICONS[icon];
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-night-700/60 transition-colors"
+                >
+                  <Icon className={`w-4 h-4 ${color}`} />
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
+          {user && (
+            <Link
+              href="/settings"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium text-zinc-300 hover:text-white hover:bg-night-700/60 transition-colors"
+            >
+              <Settings className="w-4 h-4 text-blue-400" />
+              <span>Settings</span>
+            </Link>
+          )}
         </nav>
 
         {/* Right side: auth + CTA + mobile toggle */}

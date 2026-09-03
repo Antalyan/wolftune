@@ -3,8 +3,9 @@
 Music rating and guessing app. Discover, rate, review, and prove your ear.
 
 > **Phase 1 ✅** — project foundation, theme, mascot, and navigation shell.
-> **Phase 2 ✅ (code)** — Supabase auth (email + password) + database schema.
-> Follow the setup steps below to activate auth with your own keys.
+> **Phase 2 ✅ (code)** — Supabase auth (email + password).
+> **Phase 3 ✅ (code)** — Spotify foundation: server API client, data model v2, playback connect.
+> Follow the setup steps below to activate auth and Spotify with your own keys.
 
 ## Tech Stack
 
@@ -87,17 +88,16 @@ need to connect your own Supabase project:
 1. Go to **https://supabase.com** → **New project** (takes ~2 minutes).
 2. Note your **Project URL** and **anon key**:
    `Supabase Dashboard → Project Settings → API`.
-3. Put them in `.env.local`:
-   ```bash
-   npm run dev    # or restart it
-   ```
+3. Put them in `.env.local`.
 
-### 2. Run the database migration
+### 2. Run the database migrations
 
-Open **Supabase Dashboard → SQL Editor**, paste the contents of
-[`supabase/migrations/20260903_initial_schema.sql`](supabase/migrations/20260903_initial_schema.sql),
-and click **Run**. This creates `profiles`, `ratings`, `game_scores`
-(with row-level security + an automatic profile trigger on signup).
+Open **Supabase Dashboard → SQL Editor** and run, in order:
+
+1. [`supabase/migrations/20260903_initial_schema.sql`](supabase/migrations/20260903_initial_schema.sql) —
+   user profiles (auto-created on signup)
+2. [`supabase/migrations/20260903_phase3_data_model_v2.sql`](supabase/migrations/20260903_phase3_data_model_v2.sql) —
+   catalog snapshots + track ratings + subjective album/playlist ratings
 
 ### 3. Email provider (enabled by default)
 
@@ -133,6 +133,63 @@ with your email + password.
 > (exchanges the confirmation code for a session). The `src/middleware.ts` refreshes
 > the session cookie on every request.
 
+## 🎧 Spotify Credentials — per-user or per-group
+
+WolfTune searches the Spotify catalog server-side (**Client Credentials flow**) and
+plays **30-second preview clips** (not full tracks). Search works with your own
+credentials — or a shared set from a group.
+
+> Why previews instead of full tracks? The Web Playback SDK requires Spotify
+> Premium, and each user would need a Premium-linked OAuth token. Preview URLs are
+> available on **every** track and work without login — they're perfect for search
+> and the guessing game. Full-track playback can be added later as an optional
+> enhancement via OAuth + Premium.
+
+### Option A: Add your own credentials (Settings)
+
+1. Go to **https://developer.spotify.com/dashboard** → **Create app**.
+2. Note the **Client ID** and **Client Secret** (no Redirect URIs needed — we use
+   the Client Credentials flow).
+3. **Sign in** to WolfTune → visit **Settings** (nav link appears when signed in).
+4. Paste your **Client ID** and **Client Secret** → click **Save credentials**.
+
+### Option B: Use your group's credentials
+
+If your group has shared credentials, they're used automatically — no action needed.
+Group owners can set them at **Groups → [your group]**.
+
+### Fallback: env vars (for local dev)
+
+```env
+SPOTIFY_CLIENT_ID=your_client_id
+SPOTIFY_CLIENT_SECRET=your_client_secret
+```
+
+When no user or group credentials are found, WolfTune falls back to these — great
+for single-user local development.
+
+### How credentials resolve (priority order)
+
+1. **Your personal credentials** on your profile (Settings)
+2. **Any group you belong to** that has credentials (first match)
+3. **Server environment variables** (`.env.local`)
+
+Without any of these, search shows a **"Demo data" mode** with a small built-in
+catalog.
+
+### 5. Test search
+
+- Type a query → live Spotify results appear (no more "Demo data" pill).
+- Click any track's **▶** button to play its 30-second preview.
+
+### Security notes
+
+- Client secrets are stored in Supabase and protected by **Row Level Security** —
+  only you (or group owners, for shared creds) can read or update them.
+- Search requests go through our server (`/api/search`) — your Client Secret **never
+  touches the browser**.
+- The 30-second previews are public Spotify snippets — no user auth token involved.
+
 ## Theme
 
 Dark-first design system:
@@ -148,16 +205,19 @@ Dark-first design system:
 ```
 src/
 ├── app/            # App Router pages, root layout, auth callback/signout routes
+│   └── api/        # Server routes (search, albums, playlists, spotify me)
 ├── components/
 │   ├── auth/       # LoginForm (email sign-in / sign-up)
 │   ├── Navbar.tsx  # server component (loads session)
 │   ├── MobileMenu.tsx
 │   ├── AuthButton.tsx
+│   ├── SpotifyConnectionCard.tsx
+│   ├── SpotifyPlayerProvider.tsx  # Web Playback SDK context
 │   ├── Footer.tsx
 │   └── WolfMascot.tsx
 ├── lib/
 │   ├── supabase/   # client, server, middleware session refresh, env validation
-│   ├── spotify.ts
+│   ├── spotify.ts  # server-only Web API client (cached token)
 │   └── utils.ts
 ├── middleware.ts   # session cookie refresh on every request
 └── types/          # Spotify + Supabase (Database) data models
@@ -167,6 +227,9 @@ src/
 
 - [x] **Phase 1** — Project init, theme, mascot, layout shell
 - [x] **Phase 2** — Supabase auth (email + password) + database schema
-- [ ] **Phase 3** — Spotify search, previews, ratings & reviews
-- [ ] **Phase 4** — Guess-the-song game, streaks, leaderboard
-- [ ] **Phase 5** — Community feed & social features
+- [x] **Phase 3** — Spotify foundation: server API client, data model v2, playback connect
+- [ ] **Phase 4** — Rating experience: per-track + subjective album/playlist ratings
+- [ ] **Phase 5** — Groups: create, invite, see group members' ratings
+- [ ] **Phase 6** — Group statistics: graphs, preferences, best-of lists
+- [ ] **Phase 7** — Guessing game: weighted difficulty, snippet playback, streaks
+- [ ] **Phase 8** — Polish, deployment, community feed

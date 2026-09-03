@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 import type { LucideIcon } from "lucide-react";
-import { Menu, X, LogIn, LogOut, Search, Headphones, Star, Trophy } from "lucide-react";
+import { Menu, X, LogIn, LogOut, Search, Headphones, Star, Trophy, Users } from "lucide-react";
 import { WolfMascot } from "./WolfMascot";
 import type { NavLink, NavLinkIcon } from "./nav-links";
 
@@ -14,6 +14,7 @@ const NAV_ICONS: Record<NavLinkIcon, LucideIcon> = {
   headphones: Headphones,
   star: Star,
   trophy: Trophy,
+  users: Users,
 };
 
 interface MobileMenuProps {
@@ -61,7 +62,10 @@ export function MobileMenu({ links, user }: MobileMenuProps) {
           <div className="mt-2 pt-2 border-t border-blue-900/40">
             {user ? (
               <>
-                <div className="flex items-center gap-2.5 px-3 py-2.5">
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-night-700/60 transition-colors"
+                >
                   {user.user_metadata?.avatar_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -77,7 +81,7 @@ export function MobileMenu({ links, user }: MobileMenuProps) {
                       user.email ??
                       "Wolf"}
                   </span>
-                </div>
+                </Link>
                 <form action="/auth/signout" method="post">
                   <button
                     type="submit"

@@ -1,141 +1,419 @@
-import { SpotifyTrack } from "@/types/spotify";
+import {
+  SpotifyAlbumSummary,
+  SpotifyPlaylistSummary,
+  SpotifySearchResults,
+  SpotifySearchType,
+  SpotifyTrack,
+} from "@/types/spotify";
 
-const MOCK_TRACKS: SpotifyTrack[] = [
-  {
-    id: "1",
-    name: "Blinding Lights",
-    preview_url: "https://p.scdn.co/mp3-preview/b22030d995c76e28e932463e26b21696237004f8?cid=cfe928b2b280425880a422004450d6f2",
-    duration_ms: 200040,
-    explicit: false,
-    popularity: 95,
-    artists: [{ id: "a1", name: "The Weeknd" }],
-    album: {
-      id: "al1",
-      name: "After Hours",
-      images: [{ url: "https://i.scdn.co/image/ab67616d0000b2738863bc11d2aa12b54f5aeb36", height: 640, width: 640 }],
-      release_date: "2020-03-20",
-      total_tracks: 14,
-      artists: [{ id: "a1", name: "The Weeknd" }],
-    },
-  },
-  {
-    id: "2",
-    name: "Midnight City",
-    preview_url: "https://p.scdn.co/mp3-preview/a64a38e07897d2643a055be1f86d633333ee8ee6?cid=cfe928b2b280425880a422004450d6f2",
-    duration_ms: 243000,
-    explicit: false,
-    popularity: 88,
-    artists: [{ id: "a2", name: "M83" }],
-    album: {
-      id: "al2",
-      name: "Hurry Up, We're Dreaming",
-      images: [{ url: "https://i.scdn.co/image/ab67616d0000b27396c0926c48fb07d1302c3be9", height: 640, width: 640 }],
-      release_date: "2011-10-18",
-      total_tracks: 22,
-      artists: [{ id: "a2", name: "M83" }],
-    },
-  },
-  {
-    id: "3",
-    name: "As It Was",
-    preview_url: "https://p.scdn.co/mp3-preview/0d9860b2404eb58c67c5e317c2a7147b4d31484f?cid=cfe928b2b280425880a422004450d6f2",
-    duration_ms: 167303,
-    explicit: false,
-    popularity: 92,
-    artists: [{ id: "a3", name: "Harry Styles" }],
-    album: {
-      id: "al3",
-      name: "Harry's House",
-      images: [{ url: "https://i.scdn.co/image/ab67616d0000b2732e8f6371050e04e76ea0dd79", height: 640, width: 640 }],
-      release_date: "2022-05-20",
-      total_tracks: 13,
-      artists: [{ id: "a3", name: "Harry Styles" }],
-    },
-  },
-  {
-    id: "4",
-    name: "Get Lucky",
-    preview_url: "https://p.scdn.co/mp3-preview/8a7a2a1bd7d0f10c66dbb72457813a35b0b3d68d?cid=cfe928b2b280425880a422004450d6f2",
-    duration_ms: 248413,
-    explicit: false,
-    popularity: 89,
-    artists: [{ id: "a4", name: "Daft Punk" }, { id: "a5", name: "Pharrell Williams" }],
-    album: {
-      id: "al4",
-      name: "Random Access Memories",
-      images: [{ url: "https://i.scdn.co/image/ab67616d0000b273b33d46e2730386db49ef7892", height: 640, width: 640 }],
-      release_date: "2013-05-17",
-      total_tracks: 13,
-      artists: [{ id: "a4", name: "Daft Punk" }],
-    },
-  },
-  {
-    id: "5",
-    name: "Take On Me",
-    preview_url: "https://p.scdn.co/mp3-preview/3d13bd6c5f7d3a017f8a9a4e320d7e63b15f9d1d?cid=cfe928b2b280425880a422004450d6f2",
-    duration_ms: 228000,
-    explicit: false,
-    popularity: 86,
-    artists: [{ id: "a6", name: "a-ha" }],
-    album: {
-      id: "al5",
-      name: "Hunting High and Low",
-      images: [{ url: "https://i.scdn.co/image/ab67616d0000b2732d0b677a835b3eeef52b2f67", height: 640, width: 640 }],
-      release_date: "1985-06-01",
-      total_tracks: 10,
-      artists: [{ id: "a6", name: "a-ha" }],
-    },
-  },
-];
+export interface SpotifyCredentials {
+  clientId: string;
+  clientSecret: string;
+}
 
-export async function searchTracks(query: string): Promise<SpotifyTrack[]> {
-  if (!query || query.trim() === "") {
-    return MOCK_TRACKS;
+export class SpotifyApiError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "SpotifyApiError";
+    this.status = status;
   }
+}
 
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+const TOKEN_URL = "https://accounts.spotify.com/api/token";
+const API_BASE = "https://api.spotify.com/v1";
+const TOKEN_EXPIRY_MARGIN_MS = 60_000;
+
+/**
+ * Per-credential-pair token cache. Keyed by client ID so user/group
+ * credentials don\'t collide with each other or with env-var creds.
+ */
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
+/** True when env-var Spotify API credentials are present (fallback). */
+export function isSpotifyConfigured(): boolean {
+  return Boolean(process.env.SPOTIFY_CLIENT_ID && process.env.SPOTIFY_CLIENT_SECRET);
+}
+
+/**
+ * Client Credentials flow with a per-client cache.
+ * When `creds` is omitted, falls back to env vars (backward compat).
+ */
+async function getAccessToken(creds?: SpotifyCredentials): Promise<string> {
+  const clientId = creds?.clientId ?? process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = creds?.clientSecret ?? process.env.SPOTIFY_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    // Return filtered mock results if API credentials are not set
-    const q = query.toLowerCase();
-    return MOCK_TRACKS.filter(
-      (t) =>
-        t.name.toLowerCase().includes(q) ||
-        t.artists.some((a) => a.name.toLowerCase().includes(q)) ||
-        t.album.name.toLowerCase().includes(q)
+    throw new SpotifyApiError(
+      "Spotify is not configured — missing SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET."
     );
   }
 
-  try {
-    const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: "Basic " + Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
-      },
-      body: "grant_type=client_credentials",
-      next: { revalidate: 3600 },
-    });
-
-    if (!tokenRes.ok) return MOCK_TRACKS;
-    const tokenData = await tokenRes.json();
-
-    const searchRes = await fetch(
-      `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=12`,
-      {
-        headers: { Authorization: `Bearer ${tokenData.access_token}` },
-      }
-    );
-
-    if (!searchRes.ok) return MOCK_TRACKS;
-    const searchData = await searchRes.json();
-    return searchData.tracks?.items || MOCK_TRACKS;
-  } catch {
-    return MOCK_TRACKS;
+  const cacheKey = clientId;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt - TOKEN_EXPIRY_MARGIN_MS) {
+    return cached.token;
   }
+
+  const res = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString("base64")}`,
+    },
+    body: new URLSearchParams({ grant_type: "client_credentials" }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    throw new SpotifyApiError(`Spotify token request failed with status ${res.status}.`, res.status);
+  }
+
+  const data = (await res.json()) as { access_token: string; expires_in: number };
+  tokenCache.set(cacheKey, {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  });
+  return data.access_token;
+}
+
+/** Authenticated GET against the Web API; retries once with a fresh token on 401. */
+async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials): Promise<T> {
+  const token = await getAccessToken(creds);
+  const first = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+
+  if (first.status !== 401) {
+    if (!first.ok) {
+      throw new SpotifyApiError(`Spotify request failed with status ${first.status}.`, first.status);
+    }
+    return (await first.json()) as T;
+  }
+
+  tokenCache.delete(creds?.clientId ?? process.env.SPOTIFY_CLIENT_ID ?? "");
+  const second = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${await getAccessToken(creds)}` },
+    cache: "no-store",
+  });
+  if (!second.ok) {
+    throw new SpotifyApiError(`Spotify request failed with status ${second.status}.`, second.status);
+  }
+  return (await second.json()) as T;
+}
+/* ------------------------------------------------------------------ */
+/* Raw Web API shapes (only the fields we actually use)                */
+/* ------------------------------------------------------------------ */
+
+interface RawImage {
+  url: string;
+  height?: number | null;
+  width?: number | null;
+}
+
+interface RawArtist {
+  id: string;
+  name: string;
+}
+
+interface RawTrack {
+  id: string;
+  name: string;
+  artists: RawArtist[];
+  album?: {
+    id: string;
+    name: string;
+    images: RawImage[] | null;
+    release_date?: string | null;
+    artists?: RawArtist[];
+    total_tracks?: number;
+  } | null;
+  duration_ms?: number;
+  preview_url?: string | null;
+  explicit?: boolean;
+  popularity?: number;
+}
+
+interface RawAlbum {
+  id: string;
+  name: string;
+  artists: RawArtist[];
+  images: RawImage[] | null;
+  release_date?: string | null;
+  total_tracks?: number;
+  album_type?: string;
+}
+
+interface RawSearchResponse {
+  tracks?: { items: RawTrack[] | null } | null;
+  albums?: { items: RawAlbum[] | null } | null;
+  playlists?: {
+    items: {
+      id: string;
+      name: string;
+      images: RawImage[] | null;
+      owner?: { display_name?: string | null } | null;
+      tracks?: { total?: number | null } | null;
+      description?: string | null;
+    }[] | null;
+  } | null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Normalizers                                                        */
+/* ------------------------------------------------------------------ */
+
+function mapImages(images: RawImage[] | null | undefined): { url: string; width: number | null; height: number | null }[] {
+  if (!images) return [];
+  return images
+    .filter((img): img is RawImage => Boolean(img?.url))
+    .map((img) => ({ url: img.url, width: img.width ?? null, height: img.height ?? null }))
+    .sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
+}
+
+function mapArtist(a: RawArtist): { id: string; name: string } {
+  return { id: a.id, name: a.name };
+}
+
+function mapTrack(t: RawTrack): SpotifyTrack {
+  return {
+    id: t.id,
+    name: t.name,
+    artists: (t.artists ?? []).map(mapArtist),
+    album: t.album
+      ? {
+          id: t.album.id,
+          name: t.album.name,
+          images: mapImages(t.album.images),
+          release_date: t.album.release_date ?? null,
+          artists: (t.album.artists ?? []).map(mapArtist),
+          total_tracks: t.album.total_tracks ?? 0,
+        }
+      : {
+          id: "",
+          name: t.name,
+          images: [],
+          release_date: null,
+          artists: (t.artists ?? []).map(mapArtist),
+          total_tracks: 0,
+        },
+    duration_ms: t.duration_ms ?? 0,
+    preview_url: t.preview_url ?? null,
+    explicit: t.explicit ?? false,
+    popularity: t.popularity ?? 0,
+  };
+}
+
+function mapAlbum(a: RawAlbum): SpotifyAlbumSummary {
+  return {
+    id: a.id,
+    name: a.name,
+    artists: (a.artists ?? []).map(mapArtist),
+    images: mapImages(a.images),
+    release_date: a.release_date ?? null,
+    total_tracks: a.total_tracks ?? 0,
+    album_type: a.album_type ?? "",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Public search                                                      */
+/* ------------------------------------------------------------------ */
+
+export interface SearchOptions {
+  types?: SpotifySearchType[];
+  limit?: number;
+  credentials?: SpotifyCredentials;
+}
+
+/**
+ * Live Spotify search across tracks / albums / playlists.
+ * Throws SpotifyApiError on failure — callers decide on fallbacks.
+ */
+export async function searchSpotify(
+  query: string,
+  options: SearchOptions = {}
+): Promise<SpotifySearchResults> {
+  const types = options.types ?? ["track", "album", "playlist"];
+  const limit = Math.min(Math.max(options.limit ?? 12, 1), 50);
+  const params = new URLSearchParams({ q: query, type: types.join(","), limit: String(limit) });
+
+  const data = await spotifyFetch<RawSearchResponse>(`/search?${params.toString()}`, options.credentials);
+
+  return {
+    tracks: (data.tracks?.items ?? []).filter((t) => t?.id).map(mapTrack),
+    albums: (data.albums?.items ?? []).filter((a) => a?.id).map(mapAlbum),
+    playlists: (data.playlists?.items ?? [])
+      .filter((p) => p?.id)
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        images: mapImages(p.images),
+        owner_name: p.owner?.display_name ?? "Unknown",
+        total_tracks: p.tracks?.total ?? 0,
+        description: p.description ?? null,
+      })),
+    source: "spotify",
+  };
+}
+
+/** Full album object incl. its tracklist. */
+export async function getAlbumWithTracks(
+  albumId: string,
+  credentials?: SpotifyCredentials
+): Promise<{ album: SpotifyAlbumSummary; tracks: SpotifyTrack[] }> {
+  const raw = await spotifyFetch<RawAlbum & { tracks?: { items: RawTrack[] | null } }>(
+    `/albums/${encodeURIComponent(albumId)}`,
+    credentials
+  );
+
+  return {
+    album: mapAlbum(raw),
+    tracks: (raw.tracks?.items ?? []).filter((t) => t?.id).map(mapTrack),
+  };
+}
+
+/** Public playlist incl. its tracks (local/removed items are skipped). */
+export async function getPlaylistWithTracks(
+  playlistId: string,
+  credentials?: SpotifyCredentials
+): Promise<{ playlist: SpotifyPlaylistSummary; tracks: SpotifyTrack[] }> {
+  const raw = await spotifyFetch<{
+    id: string;
+    name: string;
+    images: RawImage[] | null;
+    description: string | null;
+    owner?: { display_name?: string | null };
+    tracks?: { total?: number | null; items?: { track: RawTrack | null }[] | null };
+  }>(
+    `/playlists/${encodeURIComponent(
+      playlistId
+    )}?fields=id,name,images,description,owner,tracks(total,items(track))`,
+    credentials
+  );
+
+  const tracks = (raw.tracks?.items ?? [])
+    .map((item) => item.track)
+    .filter((t): t is RawTrack => Boolean(t?.id))
+    .map(mapTrack);
+
+  return {
+    playlist: {
+      id: raw.id,
+      name: raw.name,
+      images: mapImages(raw.images),
+      owner_name: raw.owner?.display_name ?? "Unknown",
+      total_tracks: raw.tracks?.total ?? tracks.length,
+      description: raw.description ?? null,
+    },
+    tracks,
+  };
+}
+
+/** Offline fallback used by /api/search when no API keys are configured. */
+export function getMockSearch(query: string, types: SpotifySearchType[]): SpotifySearchResults {
+  const q = query.toLowerCase();
+  const tracks = types.includes("track")
+    ? MOCK_TRACKS.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.artists.some((a) => a.name.toLowerCase().includes(q)) ||
+          t.album?.name.toLowerCase().includes(q)
+      )
+    : [];
+
+  return { tracks, albums: [], playlists: [], source: "mock" };
 }
 
 export function getGamePool(): SpotifyTrack[] {
   return MOCK_TRACKS;
 }
+const MOCK_TRACKS: SpotifyTrack[] = [
+  {
+    id: "mock-1",
+    name: "Blinding Lights",
+    artists: [{ id: "a1", name: "The Weeknd" }],
+    album: {
+      id: "al1",
+      name: "After Hours",
+      images: [{ url: "", width: null, height: null }],
+      release_date: "2020-03-20",
+      artists: [{ id: "a1", name: "The Weeknd" }],
+      total_tracks: 14,
+    },
+    duration_ms: 200000,
+    preview_url: null,
+    explicit: false,
+    popularity: 80,
+  },
+  {
+    id: "mock-2",
+    name: "Levitating",
+    artists: [{ id: "a2", name: "Dua Lipa" }],
+    album: {
+      id: "al2",
+      name: "Future Nostalgia",
+      images: [{ url: "", width: null, height: null }],
+      release_date: "2020-03-27",
+      artists: [{ id: "a2", name: "Dua Lipa" }],
+      total_tracks: 11,
+    },
+    duration_ms: 203000,
+    preview_url: null,
+    explicit: false,
+    popularity: 75,
+  },
+  {
+    id: "mock-3",
+    name: "Save Your Tears",
+    artists: [{ id: "a1", name: "The Weeknd" }],
+    album: {
+      id: "al1",
+      name: "After Hours",
+      images: [{ url: "", width: null, height: null }],
+      release_date: "2020-03-20",
+      artists: [{ id: "a1", name: "The Weeknd" }],
+      total_tracks: 14,
+    },
+    duration_ms: 215000,
+    preview_url: null,
+    explicit: false,
+    popularity: 78,
+  },
+  {
+    id: "mock-4",
+    name: "Peaches",
+    artists: [{ id: "a3", name: "Justin Bieber" }, { id: "a4", name: "Daniel Caesar" }],
+    album: {
+      id: "al3",
+      name: "Justice",
+      images: [{ url: "", width: null, height: null }],
+      release_date: "2021-03-19",
+      artists: [{ id: "a3", name: "Justin Bieber" }],
+      total_tracks: 16,
+    },
+    duration_ms: 198000,
+    preview_url: null,
+    explicit: false,
+    popularity: 70,
+  },
+  {
+    id: "mock-5",
+    name: "Kiss Me More",
+    artists: [{ id: "a5", name: "Doja Cat" }, { id: "a6", name: "SZA" }],
+    album: {
+      id: "al4",
+      name: "Planet Her",
+      images: [{ url: "", width: null, height: null }],
+      release_date: "2021-06-25",
+      artists: [{ id: "a5", name: "Doja Cat" }],
+      total_tracks: 14,
+    },
+    duration_ms: 208000,
+    preview_url: null,
+    explicit: false,
+    popularity: 72,
+  },
+];

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
+import { SpotifyPlayerProvider } from "@/components/SpotifyPlayerProvider";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -53,11 +54,13 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        <Navbar />
-        <main id="main" className="flex-1 flex flex-col">
-          {children}
-        </main>
-        <Footer />
+        <SpotifyPlayerProvider>
+          <Navbar />
+          <main id="main" className="flex-1 flex flex-col">
+            {children}
+          </main>
+          <Footer />
+        </SpotifyPlayerProvider>
       </body>
     </html>
   );

@@ -1,7 +1,8 @@
 export interface SpotifyImage {
   url: string;
-  height: number;
-  width: number;
+  /** The API sometimes omits dimensions for fallback imagery. */
+  height: number | null;
+  width: number | null;
 }
 
 export interface SpotifyArtist {
@@ -15,7 +16,7 @@ export interface SpotifyAlbum {
   id: string;
   name: string;
   images: SpotifyImage[];
-  release_date: string;
+  release_date: string | null;
   total_tracks: number;
   artists: SpotifyArtist[];
 }
@@ -31,13 +32,43 @@ export interface SpotifyTrack {
   album: SpotifyAlbum;
 }
 
-export interface SpotifySearchResponse {
-  tracks?: {
-    items: SpotifyTrack[];
-    total: number;
-  };
-  albums?: {
-    items: SpotifyAlbum[];
-    total: number;
-  };
+/** Album-level summary used in search results and listing pages. */
+export interface SpotifyAlbumSummary {
+  id: string;
+  name: string;
+  artists: SpotifyArtist[];
+  images: SpotifyImage[];
+  release_date: string | null;
+  total_tracks: number;
+  album_type: string;
+}
+
+/** Playlist-level summary used in search results and the guessing-game picker. */
+export interface SpotifyPlaylistSummary {
+  id: string;
+  name: string;
+  images: SpotifyImage[];
+  owner_name: string;
+  total_tracks: number;
+  description: string | null;
+}
+
+export type SpotifySearchType = "track" | "album" | "playlist";
+
+/** Response shape of GET /api/spotify/me. */
+export interface SpotifyMeStatus {
+  connected: boolean;
+  premium?: boolean;
+  spotifyId?: string;
+  displayName?: string | null;
+  error?: string;
+}
+
+/** Normalized search payload returned by /api/search. */
+export interface SpotifySearchResults {
+  tracks: SpotifyTrack[];
+  albums: SpotifyAlbumSummary[];
+  playlists: SpotifyPlaylistSummary[];
+  /** "spotify" = live Web API results; "mock" = offline fallback (no API keys). */
+  source: "spotify" | "mock";
 }
