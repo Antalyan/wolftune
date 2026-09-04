@@ -33,14 +33,14 @@ export async function createGroup(
 
   const supabase = createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return { error: "You must be signed in." };
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be signed in." };
 
   const { error } = await supabase.from("groups").insert({
     name,
     invite_code: generateInviteCode(),
-    owner_id: session.user.id,
+    owner_id: user.id,
   });
 
   if (error) {
@@ -67,9 +67,9 @@ export async function joinGroup(
 
   const supabase = createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return { error: "You must be signed in." };
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be signed in." };
 
   const { data: group, error: findErr } = await supabase
     .from("groups")
@@ -81,7 +81,7 @@ export async function joinGroup(
 
   const { error } = await supabase.from("group_members").insert({
     group_id: group.id,
-    user_id: session.user.id,
+    user_id: user.id,
     role: "member",
   });
 
@@ -113,9 +113,9 @@ export async function updateGroupCredentials(
 
   const supabase = createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return { error: "You must be signed in.", success: null };
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be signed in.", success: null };
 
   // Owner-only check
   const { data: group, error: fetchErr } = await supabase
@@ -125,7 +125,7 @@ export async function updateGroupCredentials(
     .single();
 
   if (fetchErr || !group) return { error: "Group not found.", success: null };
-  if (group.owner_id !== session.user.id)
+  if (group.owner_id !== user.id)
     return { error: "Only the group owner can manage credentials.", success: null };
 
   if (!clientId || !clientSecret)
@@ -155,15 +155,15 @@ export async function leaveGroup(
 
   const supabase = createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session) return { error: "You must be signed in." };
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be signed in." };
 
   const { error } = await supabase
     .from("group_members")
     .delete()
     .eq("group_id", groupId)
-    .eq("user_id", session.user.id);
+    .eq("user_id", user.id);
 
   if (error) return { error: error.message };
 

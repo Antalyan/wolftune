@@ -14,10 +14,10 @@ export const metadata = {
 async function GroupsContent() {
   const supabase = createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <WolfMascot size={80} mood="listening" />
@@ -29,7 +29,7 @@ async function GroupsContent() {
     );
   }
 
-  const userId = session.user.id;
+  const userId = user.id;
 
   // Groups the user owns
   const { data: ownedGroups } = await supabase

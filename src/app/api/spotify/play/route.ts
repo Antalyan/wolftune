@@ -21,6 +21,16 @@ export async function PUT(request: Request) {
   const supabase = createClient();
 
   const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  }
+
+  // provider_token lives on the session object; it is NOT used to establish
+  // identity — the verified identity comes from getUser() above.
+  const {
     data: { session },
   } = await supabase.auth.getSession();
 

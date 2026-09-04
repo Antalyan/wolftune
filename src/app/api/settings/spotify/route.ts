@@ -14,10 +14,10 @@ export async function POST(request: Request) {
   const supabase = createClient();
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
   }
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     const { error } = await supabase
       .from("profiles")
       .update({ spotify_client_id: null, spotify_client_secret: null })
-      .eq("id", session.user.id);
+      .eq("id", user.id);
 
     if (error) {
       return NextResponse.json({ error: "Failed to clear credentials." }, { status: 500 });
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
   const { error } = await supabase
     .from("profiles")
     .update({ spotify_client_id: clientId, spotify_client_secret: clientSecret })
-    .eq("id", session.user.id);
+    .eq("id", user.id);
 
   if (error) {
     return NextResponse.json({ error: "Failed to save credentials." }, { status: 500 });

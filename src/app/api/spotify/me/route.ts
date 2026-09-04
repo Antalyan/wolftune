@@ -15,15 +15,21 @@ export async function GET() {
   const supabase = createClient();
 
   const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // session is only read for provider_token (never the user object) — the
+  // verified identity comes from getUser() above.
+  const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  const spotifyIdentity = session?.user.identities?.find((i) => i.provider === "spotify");
-  if (!session || !spotifyIdentity) {
+  const spotifyIdentity = user?.identities?.find((i) => i.provider === "spotify");
+  if (!user || !spotifyIdentity) {
     return NextResponse.json({ connected: false } satisfies SpotifyMeStatus);
   }
 
-  const providerToken = session.provider_token;
+  const providerToken = session?.provider_token;
   if (!providerToken) {
     return NextResponse.json({
       connected: true,

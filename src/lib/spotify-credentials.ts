@@ -28,10 +28,10 @@ export async function resolveSpotifyCredentials(): Promise<CredentialResolution>
   const supabase = createClient();
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return {
       credentials: null,
       reason: "not_authenticated",
@@ -39,7 +39,7 @@ export async function resolveSpotifyCredentials(): Promise<CredentialResolution>
     };
   }
 
-  const userId = session.user.id;
+  const userId = user.id;
 
   // 1. Personal credentials
   const { data: profile } = await supabase

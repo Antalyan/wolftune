@@ -15,10 +15,10 @@ export async function POST(request: Request) {
   const supabase = createClient();
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return NextResponse.json({ error: "You must be signed in." }, { status: 401 });
   }
 
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Group not found." }, { status: 404 });
   }
 
-  const isOwner = session.user.id === group.owner_id;
+  const isOwner = user.id === group.owner_id;
   let isAdmin = isOwner;
 
   if (!isOwner) {
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
       .from("group_members")
       .select("role")
       .eq("group_id", groupId)
-      .eq("user_id", session.user.id)
+      .eq("user_id", user.id)
       .single();
     isAdmin = membership?.role === "admin";
   }

@@ -24,10 +24,10 @@ export async function updateSpotifyCredentials(
 
   const supabase = createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) return { error: "You must be signed in.", success: null };
+  if (!user) return { error: "You must be signed in.", success: null };
 
   // Basic validation
   if (!clear) {
@@ -47,7 +47,7 @@ export async function updateSpotifyCredentials(
   const { error } = await supabase
     .from("profiles")
     .update(updates)
-    .eq("id", session.user.id);
+    .eq("id", user.id);
 
   if (error) return { error: error.message, success: null };
 

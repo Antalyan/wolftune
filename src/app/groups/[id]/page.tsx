@@ -15,10 +15,10 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
   const supabase = createClient();
 
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <WolfMascot size={80} mood="listening" />
@@ -26,6 +26,8 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
       </div>
     );
   }
+
+  const userId = user.id;
 
   const { data: group, error: groupError } = await supabase
     .from("groups")
@@ -39,10 +41,10 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
     .from("group_members")
     .select("role")
     .eq("group_id", id)
-    .eq("user_id", session.user.id)
+    .eq("user_id", userId)
     .single();
 
-  const isOwner = group.owner_id === session.user.id;
+  const isOwner = group.owner_id === userId;
   const isMember = Boolean(membership) || isOwner;
 
   if (!isMember) {
@@ -141,7 +143,7 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
                 )}
               </div>
               <span className="text-sm text-white">{profile.username}</span>
-              {profile.id === session.user.id && (
+              {profile.id === userId && (
                 <span className="text-[10px] bg-night-700 text-zinc-400 px-1.5 py-0.5 rounded-full ml-auto">
                   you
                 </span>

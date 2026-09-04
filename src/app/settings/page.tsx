@@ -11,10 +11,10 @@ export const metadata = {
 export default async function SettingsPage() {
   const supabase = createClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-16 text-center">
         <WolfMascot size={80} mood="listening" />
@@ -25,17 +25,19 @@ export default async function SettingsPage() {
     );
   }
 
+  const userId = user.id;
+
   // Fetch profile + group membership
   const { data: profile } = await supabase
     .from("profiles")
     .select("username, spotify_client_id, spotify_client_secret")
-    .eq("id", session.user.id)
+    .eq("id", userId)
     .single();
 
   const { data: memberships } = await supabase
     .from("group_members")
     .select("groups (id, name, spotify_client_id)")
-    .eq("user_id", session.user.id);
+    .eq("user_id", userId);
 
   const inGroupWithCreds = (memberships ?? []).some((m) => m.groups?.spotify_client_id);
 
