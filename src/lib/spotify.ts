@@ -67,6 +67,14 @@ async function getAccessToken(creds?: SpotifyCredentials): Promise<string> {
   });
 
   if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    // Spotify returns 400 invalid_client when the ID/Secret pair is wrong.
+    if (res.status === 400 && bodyText.includes("invalid_client")) {
+      throw new SpotifyApiError(
+        "Spotify rejected the credentials (invalid_client) — the Client ID or Client Secret is wrong.",
+        400
+      );
+    }
     throw new SpotifyApiError(`Spotify token request failed with status ${res.status}.`, res.status);
   }
 
@@ -78,8 +86,28 @@ async function getAccessToken(creds?: SpotifyCredentials): Promise<string> {
   return data.access_token;
 }
 
+/**
+ * Build a descriptive SpotifyApiError from a failed Web API response.
+ * Includes Spotify's own error body (reason) instead of hiding it behind
+ * a generic "status NNN" message.
+ */
+async function apiErrorFromResponse(context: string, res: Response): Promise<SpotifyApiError> {
+  const bodyText = await res.text().catch(() => "");
+  let reason = "";
+  try {
+    const parsed = JSON.parse(bodyText) as { error?: { message?: string } | string };
+    if (typeof parsed.error === "string") reason = parsed.error;
+    else if (parsed.error?.message) reason = parsed.error.message;
+  } catch {
+    if (bodyText) reason = bodyText.slice(0, 200);
+  }
+  const detail = reason ? `: ${reason}` : "";
+  return new SpotifyApiError(`Spotify ${context} request failed with status ${res.status}${detail}.`, res.status);
+}
+
 /** Authenticated GET against the Web API; retries once with a fresh token on 401. */
-async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials): Promise<T> {
+/** Authenticated GET against the Web API; retries once with a fresh token on 401. */
+export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials): Promise<T> {
   const token = await getAccessToken(creds);
   const first = await fetch(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -88,7 +116,7 @@ async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials): Promis
 
   if (first.status !== 401) {
     if (!first.ok) {
-      throw new SpotifyApiError(`Spotify request failed with status ${first.status}.`, first.status);
+      throw await apiErrorFromResponse("search/API", first);
     }
     return (await first.json()) as T;
   }
@@ -99,7 +127,7 @@ async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials): Promis
     cache: "no-store",
   });
   if (!second.ok) {
-    throw new SpotifyApiError(`Spotify request failed with status ${second.status}.`, second.status);
+    throw await apiErrorFromResponse("search/API (after token refresh)", second);
   }
   return (await second.json()) as T;
 }
@@ -131,6 +159,7 @@ interface RawTrack {
     total_tracks?: number;
   } | null;
   duration_ms?: number;
+  uri?: string | null;
   preview_url?: string | null;
   explicit?: boolean;
   popularity?: number;
@@ -200,6 +229,7 @@ function mapTrack(t: RawTrack): SpotifyTrack {
           total_tracks: 0,
         },
     duration_ms: t.duration_ms ?? 0,
+    uri: t.uri ?? null,
     preview_url: t.preview_url ?? null,
     explicit: t.explicit ?? false,
     popularity: t.popularity ?? 0,
@@ -226,6 +256,13 @@ export interface SearchOptions {
   types?: SpotifySearchType[];
   limit?: number;
   credentials?: SpotifyCredentials;
+  /**
+   * ISO 3166-1 alpha-2 country code (e.g. "US"). The Spotify /search endpoint
+   * REQUIRES `market` when using the Client Credentials flow (no signed-in
+   * user) — omitting it returns "400 Bad Request". Defaults to an env var,
+   * falling back to "US".
+   */
+  market?: string;
 }
 
 /**
@@ -237,8 +274,16 @@ export async function searchSpotify(
   options: SearchOptions = {}
 ): Promise<SpotifySearchResults> {
   const types = options.types ?? ["track", "album", "playlist"];
-  const limit = Math.min(Math.max(options.limit ?? 12, 1), 50);
-  const params = new URLSearchParams({ q: query, type: types.join(","), limit: String(limit) });
+  // NOTE: Spotify caps search `limit` at 10 for apps in development mode
+  // (unextended quota) — higher values return "400 Invalid limit".
+  const limit = Math.min(Math.max(options.limit ?? 10, 1), 10);
+  const market = options.market ?? process.env.SPOTIFY_MARKET ?? "US";
+  const params = new URLSearchParams({
+    q: query,
+    type: types.join(","),
+    limit: String(limit),
+    market,
+  });
 
   const data = await spotifyFetch<RawSearchResponse>(`/search?${params.toString()}`, options.credentials);
 
@@ -252,7 +297,7 @@ export async function searchSpotify(
         name: p.name,
         images: mapImages(p.images),
         owner_name: p.owner?.display_name ?? "Unknown",
-        total_tracks: p.tracks?.total ?? 0,
+        total_tracks: p.tracks?.total ?? null,
         description: p.description ?? null,
       })),
     source: "spotify",
@@ -280,21 +325,41 @@ export async function getPlaylistWithTracks(
   playlistId: string,
   credentials?: SpotifyCredentials
 ): Promise<{ playlist: SpotifyPlaylistSummary; tracks: SpotifyTrack[] }> {
-  const raw = await spotifyFetch<{
+  type RawPlaylistPage = {
     id: string;
     name: string;
     images: RawImage[] | null;
     description: string | null;
     owner?: { display_name?: string | null };
-    tracks?: { total?: number | null; items?: { track: RawTrack | null }[] | null };
-  }>(
-    `/playlists/${encodeURIComponent(
-      playlistId
-    )}?fields=id,name,images,description,owner,tracks(total,items(track))`,
+    tracks?: {
+      total?: number | null;
+      items?: { track: RawTrack | null }[] | null;
+      next?: string | null;
+    };
+  };
+
+  // NOTE: do NOT use `fields=` here — Spotify returns a broken `total` (0) and
+  // partial items with that parameter. Fetch the full object and paginate.
+  const raw = await spotifyFetch<RawPlaylistPage>(
+    `/playlists/${encodeURIComponent(playlistId)}?limit=100`,
     credentials
   );
 
-  const tracks = (raw.tracks?.items ?? [])
+  const rawItems: { track: RawTrack | null }[] = [...(raw.tracks?.items ?? [])];
+  let nextUrl = raw.tracks?.next ?? null;
+  // Safety cap so a pathological 10k-track playlist can't stall a request.
+  let guard = 5;
+  while (nextUrl && guard-- > 0) {
+    const url = new URL(nextUrl);
+    const page = await spotifyFetch<RawPlaylistPage>(
+      `${url.pathname}${url.search}`,
+      credentials
+    );
+    rawItems.push(...(page.tracks?.items ?? []));
+    nextUrl = page.tracks?.next ?? null;
+  }
+
+  const tracks = rawItems
     .map((item) => item.track)
     .filter((t): t is RawTrack => Boolean(t?.id))
     .map(mapTrack);
@@ -344,6 +409,7 @@ const MOCK_TRACKS: SpotifyTrack[] = [
       total_tracks: 14,
     },
     duration_ms: 200000,
+    uri: null,
     preview_url: null,
     explicit: false,
     popularity: 80,
@@ -361,6 +427,7 @@ const MOCK_TRACKS: SpotifyTrack[] = [
       total_tracks: 11,
     },
     duration_ms: 203000,
+    uri: null,
     preview_url: null,
     explicit: false,
     popularity: 75,
@@ -378,6 +445,7 @@ const MOCK_TRACKS: SpotifyTrack[] = [
       total_tracks: 14,
     },
     duration_ms: 215000,
+    uri: null,
     preview_url: null,
     explicit: false,
     popularity: 78,
@@ -395,6 +463,7 @@ const MOCK_TRACKS: SpotifyTrack[] = [
       total_tracks: 16,
     },
     duration_ms: 198000,
+    uri: null,
     preview_url: null,
     explicit: false,
     popularity: 70,
@@ -412,6 +481,7 @@ const MOCK_TRACKS: SpotifyTrack[] = [
       total_tracks: 14,
     },
     duration_ms: 208000,
+    uri: null,
     preview_url: null,
     explicit: false,
     popularity: 72,

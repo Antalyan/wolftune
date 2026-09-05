@@ -24,6 +24,8 @@ export interface SpotifyAlbum {
 export interface SpotifyTrack {
   id: string;
   name: string;
+  /** Spotify track URI (spotify:track:…) — needed for full-track playback. */
+  uri: string | null;
   preview_url: string | null;
   duration_ms: number;
   explicit: boolean;
@@ -49,7 +51,8 @@ export interface SpotifyPlaylistSummary {
   name: string;
   images: SpotifyImage[];
   owner_name: string;
-  total_tracks: number;
+  /** null = unknown (Spotify no longer includes track counts in search results). */
+  total_tracks: number | null;
   description: string | null;
 }
 

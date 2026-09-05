@@ -31,7 +31,7 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
 
   const { data: group, error: groupError } = await supabase
     .from("groups")
-    .select("*")
+    .select("id, name, invite_code, owner_id, spotify_client_id")
     .eq("id", id)
     .single();
 
@@ -42,7 +42,7 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
     .select("role")
     .eq("group_id", id)
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
   const isOwner = group.owner_id === userId;
   const isMember = Boolean(membership) || isOwner;
@@ -67,7 +67,7 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
 
   const { data: members } = await supabase
     .from("group_members")
-    .select("user_id, role, profiles (*)")
+    .select("user_id, role, profiles (id, username, avatar_url)")
     .eq("group_id", id);
 
   const memberProfiles = (members ?? [])
@@ -118,7 +118,7 @@ export default async function GroupDetailPage({ params }: GroupDetailPageProps) 
               Credentials saved (Client ID ready).
             </p>
           )}
-          {isOwner && group && <GroupCredentialsForm group={group} />}
+          {isOwner && group && <GroupCredentialsForm groupId={group.id} initialClientId={group.spotify_client_id} />}
         </div>
       </div>
 

@@ -6,8 +6,11 @@ import { Copy, Trash2, ExternalLink } from "lucide-react";
 import { leaveGroup, type GroupActionResult } from "@/app/groups/actions";
 import { type Group } from "@/types/database";
 
+/** Only the non-secret group fields are passed to the client. */
+type GroupSummary = Pick<Group, "id" | "name" | "invite_code" | "owner_id">;
+
 interface GroupListProps {
-  groups: Group[];
+  groups: GroupSummary[];
   isOwner: boolean;
   userId: string;
 }
@@ -42,7 +45,7 @@ function GroupCard({
   isOwner,
   userId,
 }: {
-  group: Group;
+  group: GroupSummary;
   isOwner: boolean;
   userId: string;
 }) {

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   getMockSearch,
-  isSpotifyConfigured,
   searchSpotify,
   SpotifyApiError,
 } from "@/lib/spotify";
@@ -12,7 +11,8 @@ export const dynamic = "force-dynamic";
 
 const ALLOWED_TYPES = new Set<SpotifySearchType>(["track", "album", "playlist"]);
 const MAX_QUERY_LENGTH = 80;
-const RESULT_LIMIT = 12;
+/** Max results per search request — Spotify dev-mode apps cap this at 10. */
+const RESULT_LIMIT = 10;
 
 /**
  * Server-side search proxy — keeps SPOTIFY_CLIENT_SECRET on the server and
@@ -66,6 +66,16 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     if (error instanceof SpotifyApiError) {
+      // Tell the user WHERE the bad credentials live so they can fix them.
+      if (error.message.includes("invalid_client")) {
+        const hint =
+          credentials.source === "user"
+            ? "Your personal Spotify credentials are invalid — update them in Settings."
+            : credentials.source === "group"
+              ? `The Spotify credentials of your group${credentials.groupName ? ` "${credentials.groupName}"` : ""} are invalid — ask the group owner to fix them.`
+              : "The server's default Spotify credentials are invalid — contact the administrator.";
+        return NextResponse.json({ error: hint }, { status: 502 });
+      }
       return NextResponse.json({ error: error.message }, { status: 502 });
     }
     return NextResponse.json({ error: "Unexpected error while searching Spotify." }, { status: 500 });

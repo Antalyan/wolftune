@@ -190,6 +190,32 @@ catalog.
   touches the browser**.
 - The 30-second previews are public Spotify snippets — no user auth token involved.
 
+## 🛠️ Troubleshooting
+
+**`EPERM: operation not permitted ... .next\trace` on start (Windows)**
+Two Next.js instances (e.g. a dev server plus a production build) are writing to
+`.next` at the same time. Stop the other instance, delete `.next`, and start again:
+
+```powershell
+# stop all node processes for this project, then:
+Remove-Item -Recurse -Force .next
+npm run dev
+```
+
+**`Spotify rejected the credentials (invalid_client)` / search fails with status 400/502**
+The Client ID/Secret being used are wrong. The error tells you where they live:
+- *"Your personal Spotify credentials are invalid"* → fix them in **Settings**.
+- *"The Spotify credentials of your group ... are invalid"* → the group owner must
+  fix them on the group page.
+- *"server's default Spotify credentials"* → fix `SPOTIFY_CLIENT_ID/SECRET` in
+  `.env.local` and restart.
+Common causes: copied the Client Secret with extra characters, or the Spotify app
+was deleted/reset in the dashboard.
+
+**Other errors**
+- Build fails with a `.next` lock after a crash → delete `.next` and retry.
+- "Demo data" pill → no credentials resolved (see resolution order above).
+
 ## Theme
 
 Dark-first design system:

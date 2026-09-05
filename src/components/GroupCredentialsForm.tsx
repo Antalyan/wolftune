@@ -2,21 +2,20 @@
 
 import { useFormState } from "react-dom";
 import { Settings } from "lucide-react";
-import type { Database } from "@/types/database";
 import {
   updateGroupCredentials,
   type GroupSettingsActionResult,
 } from "@/app/groups/actions";
 
-type GroupRow = Database["public"]["Tables"]["groups"]["Row"];
-
 interface GroupCredentialsFormProps {
-  group: GroupRow;
+  groupId: string;
+  /** Current group Client ID (Client Secret is never sent to the client). */
+  initialClientId: string | null;
 }
 
-export function GroupCredentialsForm({ group }: GroupCredentialsFormProps) {
+export function GroupCredentialsForm({ groupId, initialClientId }: GroupCredentialsFormProps) {
   const [state, action, pending] = useFormState(
-    updateGroupCredentials.bind(null, group.id),
+    updateGroupCredentials.bind(null, groupId),
     { error: null, success: null } as GroupSettingsActionResult
   );
 
@@ -24,30 +23,30 @@ export function GroupCredentialsForm({ group }: GroupCredentialsFormProps) {
     <form action={action} className="space-y-4">
       <div>
         <label
-          htmlFor={`gid_${group.id}`}
+          htmlFor={`gid_${groupId}`}
           className="block text-xs font-medium text-zinc-300 mb-1"
         >
           Client ID
         </label>
         <input
           type="text"
-          id={`gid_${group.id}`}
+          id={`gid_${groupId}`}
           name="client_id"
           placeholder="From your Spotify developer app"
-          defaultValue={group.spotify_client_id ?? ""}
+          defaultValue={initialClientId ?? ""}
           className="w-full px-3 py-2 rounded-xl bg-night-800 border border-night-700 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
         />
       </div>
       <div>
         <label
-          htmlFor={`gsec_${group.id}`}
+          htmlFor={`gsec_${groupId}`}
           className="block text-xs font-medium text-zinc-300 mb-1"
         >
           Client Secret
         </label>
         <input
           type="password"
-          id={`gsec_${group.id}`}
+          id={`gsec_${groupId}`}
           name="client_secret"
           placeholder="Enter client secret"
           className="w-full px-3 py-2 rounded-xl bg-night-800 border border-night-700 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"

@@ -31,18 +31,18 @@ async function GroupsContent() {
 
   const userId = user.id;
 
-  // Groups the user owns
+  // Groups the user owns (only non-secret fields — never ship secrets to the client)
   const { data: ownedGroups } = await supabase
     .from("groups")
-    .select("*")
+    .select("id, name, invite_code, owner_id")
     .eq("owner_id", userId)
     .order("created_at", { ascending: false });
   const owned = ownedGroups ?? [];
 
-  // Groups the user is a member of (not owner)
+  // Groups the user is a member of (not owner) — restrict to non-secret fields
   const { data: memberships } = await supabase
     .from("group_members")
-    .select("group_id, groups(*)")
+    .select("group_id, groups (id, name, invite_code, owner_id)")
     .eq("user_id", userId)
     .order("joined_at", { ascending: false });
 

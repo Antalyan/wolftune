@@ -45,7 +45,8 @@ export function CredentialsForm({
           className="w-full px-3 py-2 rounded-xl bg-night-800 border border-night-700 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-mono"
         />
         <p className="text-[10px] text-zinc-500 mt-1">
-          Stored encrypted in your profile and never shown again after saving.
+          Stored in your profile and protected by Row Level Security. Only you
+          can read or update them, and they&apos;re used only on the server.
         </p>
       </div>
 

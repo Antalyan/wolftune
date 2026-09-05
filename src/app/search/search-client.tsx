@@ -8,19 +8,13 @@ import {
   FlaskConical,
   ListMusic,
   Music2,
-  Pause,
   Play,
   Search as SearchIcon,
+  Square,
   KeyRound,
   Users,
 } from "lucide-react";
-import {
-  SpotifyAlbumSummary,
-  SpotifyPlaylistSummary,
-  SpotifySearchResults,
-  SpotifySearchType,
-  SpotifyTrack,
-} from "@/types/spotify";
+import { SpotifyAlbumSummary, SpotifyPlaylistSummary, SpotifySearchResults, SpotifySearchType, SpotifyTrack } from "@/types/spotify";
 
 interface SearchApiResponse extends SpotifySearchResults {
   credentialStatus?: "ok" | "missing";
@@ -46,6 +40,16 @@ export default function SearchClient() {
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /**
+   * Playback uses Spotify's official IFrame Embed player — it needs no Spotify
+   * login at all and works for every user. `playingUrl` holds the embed track id.
+   * (Full-track streaming via the Web Playback SDK would require signing in with
+   * Spotify OAuth + Premium, which this app does not require.)
+   */
+  const toggleEmbed = useCallback((trackId: string) => {
+    setPlayingUrl((prev) => (prev === trackId ? null : trackId));
+  }, []);
 
   const toggleType = useCallback((t: SpotifySearchType) => {
     setTypes((prev) =>
@@ -106,10 +110,6 @@ export default function SearchClient() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query, types, fetchResults]);
-
-  const togglePlay = (url: string | null) => {
-    setPlayingUrl((prev) => (prev === url ? null : url));
-  };
 
   const showDemoPill = results?.source === "mock";
   const hasAnyResults =
@@ -221,12 +221,17 @@ export default function SearchClient() {
       )}
 
       {/* Results */}
-      {!loading && !error && results && (
+      {!loading && results && (
         <div className="space-y-6">
           {results.tracks.length > 0 && (
             <Section title="Songs" icon={Music2}>
               {results.tracks.map((t) => (
-                <TrackRow key={t.id} track={t} onTogglePlay={togglePlay} isPlaying={playingUrl === t.preview_url} />
+                <TrackRow
+                  key={t.id}
+                  track={t}
+                  isPlaying={playingUrl === t.id}
+                  onTogglePlay={() => toggleEmbed(t.id)}
+                />
               ))}
             </Section>
           )}
@@ -269,7 +274,8 @@ export default function SearchClient() {
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-white truncate">{p.name}</div>
                     <div className="text-xs text-zinc-400 truncate">
-                      by {p.owner_name} · {p.total_tracks} tracks
+                      by {p.owner_name}
+                      {p.total_tracks !== null && ` · ${p.total_tracks} tracks`}
                     </div>
                   </div>
                 </Link>
@@ -317,34 +323,52 @@ function Section({
 
 function TrackRow({
   track,
-  onTogglePlay,
   isPlaying,
+  onTogglePlay,
 }: {
   track: SpotifyTrack;
-  onTogglePlay: (url: string | null) => void;
   isPlaying: boolean;
+  onTogglePlay: () => void;
 }) {
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl bg-night-800/80 border border-night-700 hover:border-night-600 transition-colors">
-      <button
-        type="button"
-        onClick={() => onTogglePlay(track.preview_url ?? null)}
-        disabled={!track.preview_url}
-        className="flex items-center justify-center w-10 h-10 rounded-lg bg-night-900 border border-night-700 disabled:opacity-40"
-        aria-label={isPlaying ? "Pause preview" : "Play preview"}
-      >
-        {isPlaying ? (
-          <Pause className="w-4 h-4 text-spotify-green" />
-        ) : (
-          <Play className="w-4 h-4 text-white" />
-        )}
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-white truncate">{track.name}</div>
-        <div className="text-xs text-zinc-400 truncate">
-          {track.artists.map((a) => a.name).join(", ")} · {track.album?.name}
+    <div className="rounded-xl bg-night-800/80 border border-night-700 hover:border-night-600 transition-colors overflow-hidden">
+      <div className="flex items-center gap-3 p-3">
+        <button
+          type="button"
+          onClick={onTogglePlay}
+          title={isPlaying ? "Stop the preview player" : "Play the track (Spotify preview player)"}
+          className="flex items-center justify-center w-10 h-10 rounded-lg bg-night-900 border border-night-700 hover:border-night-500 transition-colors shrink-0"
+          aria-label={isPlaying ? "Stop" : "Play"}
+        >
+          {isPlaying ? (
+            <Square className="w-4 h-4 text-spotify-green" />
+          ) : (
+            <Play className="w-4 h-4 text-white" />
+          )}
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-white truncate">{track.name}</div>
+          <div className="text-xs text-zinc-400 truncate">
+            {track.artists.map((a) => a.name).join(", ")} · {track.album?.name}
+          </div>
         </div>
       </div>
+      {isPlaying && (
+        <iframe
+          title={`Spotify player: ${track.name}`}
+          src={`https://open.spotify.com/embed/track/${track.id}?utm_source=wolftune&theme=0&autoplay=1`}
+          width="100%"
+          height="152"
+          frameBorder="0"
+          allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+          loading="lazy"
+        />
+      )}
+      {isPlaying && (
+        <p className="px-3 pb-2 text-[10px] text-zinc-500">
+          Hearing only 30 seconds? Log in to Spotify in this browser for full playback.
+        </p>
+      )}
     </div>
   );
 }
