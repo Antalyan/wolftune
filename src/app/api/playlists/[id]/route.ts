@@ -1,15 +1,34 @@
 ﻿import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import { getPlaylistWithTracks, SpotifyApiError } from "@/lib/spotify";
-import { resolveSpotifyCredentials } from "@/lib/spotify-credentials";
+import { getUserAccessToken } from "@/lib/spotify-user-token";
 export const dynamic = "force-dynamic";
 export async function GET(_request: Request, { params }: { params: { id: string } }) {
-  const { credentials } = await resolveSpotifyCredentials();
-  if (!credentials) return NextResponse.json({ error: "no_credentials" }, { status: 403 });
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Playlist contents (/playlists/{id}/tracks) REQUIRE a user OAuth token — the
+  // Client Credentials token cannot access this endpoint (403). Require it.
+  const userAccessToken = user ? await getUserAccessToken(user.id) : null;
+
+  if (!userAccessToken) {
+    return NextResponse.json(
+      {
+        error: "Connect Spotify in Settings to view playlist contents.",
+        code: "NOT_CONNECTED",
+      },
+      { status: 403 }
+    );
+  }
+
   try {
-    const result = await getPlaylistWithTracks(params.id, credentials);
+    const result = await getPlaylistWithTracks(params.id, undefined, userAccessToken);
     return NextResponse.json(result);
   } catch (error) {
-    if (error instanceof SpotifyApiError) return NextResponse.json({ error: error.message }, { status: error.status ?? 502 });
+    if (error instanceof SpotifyApiError)
+      return NextResponse.json({ error: error.message }, { status: error.status ?? 502 });
     return NextResponse.json({ error: "Unexpected error." }, { status: 500 });
   }
 }

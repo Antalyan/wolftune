@@ -8,7 +8,18 @@ export interface SettingActionResult {
   success: string | null;
 }
 
-/** Validates that a string looks like a Spotify client secret (basic check). */
+/** Removes the user's stored Spotify refresh token (disconnect flow). */
+export async function disconnectSpotify(): Promise<void> {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase.from("spotify_tokens").delete().eq("user_id", user.id);
+  revalidatePath("/settings");
+}
+
 function isValidSecret(value: string): boolean {
   return value.trim().length >= 16;
 }

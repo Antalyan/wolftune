@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { resolveSpotifyCredentials } from "@/lib/spotify-credentials";
 import { getPlaylistWithTracks, SpotifyApiError } from "@/lib/spotify";
+import { getUserAccessToken } from "@/lib/spotify-user-token";
 import { upsertPlaylistSnapshot } from "@/lib/catalog";
 import { RatingForm, type RateableTrack } from "@/components/RatingForm";
 import { GroupRatingsPanel } from "@/components/GroupRatingsPanel";
@@ -19,13 +19,24 @@ interface PlaylistRatePageProps {
 export default async function PlaylistRatePage({ params }: PlaylistRatePageProps) {
   const { id } = params;
 
-  const { credentials, missingReason } = await resolveSpotifyCredentials();
-  if (!credentials) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Playlist contents (/playlists/{id}/tracks) REQUIRE a user OAuth token — the
+  // Client Credentials token cannot access this endpoint (403). Require it.
+  const userAccessToken = user ? await getUserAccessToken(user.id) : null;
+
+  if (!userAccessToken) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center">
         <KeyRound className="w-10 h-10 text-amber-400 mx-auto" />
-        <h2 className="mt-4 text-xl font-bold text-white">Spotify credentials needed</h2>
-        <p className="mt-2 text-sm text-zinc-400 max-w-md mx-auto">{missingReason}</p>
+        <h2 className="mt-4 text-xl font-bold text-white">Connect Spotify to view playlists</h2>
+        <p className="mt-2 text-sm text-zinc-400 max-w-md mx-auto">
+          Playlist contents require a Spotify OAuth connection. Connect your account in Settings
+          to view and rate your playlists.
+        </p>
         <div className="mt-4 flex items-center justify-center gap-3">
           <Link
             href="/settings"
@@ -34,10 +45,10 @@ export default async function PlaylistRatePage({ params }: PlaylistRatePageProps
             Settings
           </Link>
           <Link
-            href="/groups"
+            href="/rate"
             className="px-4 py-2 rounded-xl border border-night-600 text-zinc-300 font-bold text-xs"
           >
-            Groups
+            Back to rate
           </Link>
         </div>
       </div>
@@ -47,7 +58,7 @@ export default async function PlaylistRatePage({ params }: PlaylistRatePageProps
   let playlist;
   let spotifyTracks;
   try {
-    const result = await getPlaylistWithTracks(id, credentials);
+    const result = await getPlaylistWithTracks(id, undefined, userAccessToken);
     playlist = result.playlist;
     spotifyTracks = result.tracks;
   } catch (error) {
@@ -72,11 +83,6 @@ export default async function PlaylistRatePage({ params }: PlaylistRatePageProps
   } catch {
     // Snapshot caching is best-effort — the rating action re-attempts it.
   }
-
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   let initialTrackScores: Record<string, number> = {};
   let initialSubjectiveScore: number | null = null;

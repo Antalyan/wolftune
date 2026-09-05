@@ -106,7 +106,6 @@ async function apiErrorFromResponse(context: string, res: Response): Promise<Spo
 }
 
 /** Authenticated GET against the Web API; retries once with a fresh token on 401. */
-/** Authenticated GET against the Web API; retries once with a fresh token on 401. */
 export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials): Promise<T> {
   const token = await getAccessToken(creds);
   const first = await fetch(`${API_BASE}${path}`, {
@@ -118,7 +117,8 @@ export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials):
     if (!first.ok) {
       throw await apiErrorFromResponse("search/API", first);
     }
-    return (await first.json()) as T;
+    const data = await first.json();
+    return data as T;
   }
 
   tokenCache.delete(creds?.clientId ?? process.env.SPOTIFY_CLIENT_ID ?? "");
@@ -130,6 +130,23 @@ export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials):
     throw await apiErrorFromResponse("search/API (after token refresh)", second);
   }
   return (await second.json()) as T;
+}
+
+/**
+ * Authenticated GET with a user-scoped OAuth access token.
+ * Used for endpoints that require the *user's* identity (e.g. playlist
+ * contents), which the app-only Client Credentials token cannot access
+ * for apps in development mode.
+ */
+export async function spotifyUserFetch<T>(path: string, userAccessToken: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${userAccessToken}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw await apiErrorFromResponse("user/API", res);
+  }
+  return (await res.json()) as T;
 }
 /* ------------------------------------------------------------------ */
 /* Raw Web API shapes (only the fields we actually use)                */
@@ -320,61 +337,108 @@ export async function getAlbumWithTracks(
   };
 }
 
-/** Public playlist incl. its tracks (local/removed items are skipped). */
 export async function getPlaylistWithTracks(
   playlistId: string,
-  credentials?: SpotifyCredentials
+  credentials?: SpotifyCredentials,
+  userAccessToken?: string | null
 ): Promise<{ playlist: SpotifyPlaylistSummary; tracks: SpotifyTrack[] }> {
-  type RawPlaylistPage = {
+  type RawPlaylist = {
     id: string;
     name: string;
     images: RawImage[] | null;
     description: string | null;
     owner?: { display_name?: string | null };
-    tracks?: {
-      total?: number | null;
-      items?: { track: RawTrack | null }[] | null;
-      next?: string | null;
-    };
+    tracks?: { total?: number | null } | null;
   };
 
-  // NOTE: do NOT use `fields=` here — Spotify returns a broken `total` (0) and
-  // partial items with that parameter. Fetch the full object and paginate.
-  const raw = await spotifyFetch<RawPlaylistPage>(
-    `/playlists/${encodeURIComponent(playlistId)}?limit=100`,
-    credentials
+  type RawTrackPage = {
+    items?: { track: RawTrack | null }[] | null;
+    next?: string | null;
+    total?: number | null;
+  };
+
+  const fetchWithAuth = <T>(path: string): Promise<T> =>
+    userAccessToken
+      ? spotifyUserFetch<T>(path, userAccessToken)
+      : spotifyFetch<T>(path, credentials);
+
+  // 1. Fetch playlist metadata (name, images, owner, track count).
+  const meta = await fetchWithAuth<RawPlaylist>(
+    `/playlists/${encodeURIComponent(playlistId)}`
   );
 
-  const rawItems: { track: RawTrack | null }[] = [...(raw.tracks?.items ?? [])];
-  let nextUrl = raw.tracks?.next ?? null;
-  // Safety cap so a pathological 10k-track playlist can't stall a request.
-  let guard = 5;
-  while (nextUrl && guard-- > 0) {
-    const url = new URL(nextUrl);
-    const page = await spotifyFetch<RawPlaylistPage>(
-      `${url.pathname}${url.search}`,
-      credentials
-    );
-    rawItems.push(...(page.tracks?.items ?? []));
-    nextUrl = page.tracks?.next ?? null;
-  }
+  // 2. Fetch tracks from the dedicated /tracks endpoint with pagination.
+  const tracks: SpotifyTrack[] = [];
+  let nextUrl: string | null = `/playlists/${encodeURIComponent(playlistId)}/tracks?limit=100`;
+  let total = meta.tracks?.total ?? null;
+  let guard = 5; // safety cap (~600 tracks)
 
-  const tracks = rawItems
-    .map((item) => item.track)
-    .filter((t): t is RawTrack => Boolean(t?.id))
-    .map(mapTrack);
+  while (nextUrl && guard-- > 0) {
+    // Spotify returns `next` as an absolute URL; extract just the path+query
+    // since fetchWithAuth prepends API_BASE.
+    const parsed = new URL(nextUrl, API_BASE);
+    const pathAndQuery: string = `${parsed.pathname}${parsed.search}`;
+    const page = await fetchWithAuth<RawTrackPage>(pathAndQuery);
+    const items = page.items ?? [];
+    for (const item of items) {
+      if (item?.track?.id) tracks.push(mapTrack(item.track));
+    }
+    if (page.total != null) total = page.total;
+    nextUrl = page.next ?? null;
+  }
 
   return {
     playlist: {
-      id: raw.id,
-      name: raw.name,
-      images: mapImages(raw.images),
-      owner_name: raw.owner?.display_name ?? "Unknown",
-      total_tracks: raw.tracks?.total ?? tracks.length,
-      description: raw.description ?? null,
+      id: meta.id,
+      name: meta.name,
+      images: mapImages(meta.images),
+      owner_name: meta.owner?.display_name ?? "Unknown",
+      total_tracks: total ?? tracks.length,
+      description: meta.description ?? null,
     },
     tracks,
   };
+}
+
+type RawOwnPlaylist = {
+  id: string;
+  name: string;
+  images?: RawImage[] | null;
+  description?: string | null;
+  tracks?: { total?: number | null } | null;
+  owner?: { display_name?: string | null } | null;
+};
+
+/**
+ * Lists the playlists the caller owns or co-creates (via the user-scoped OAuth
+ * token). Spotify returns exactly the playlists the authenticated user owns or
+ * collaborates on — no foreign playlists, no shared-quota concerns.
+ */
+export async function listOwnPlaylists(userAccessToken: string): Promise<SpotifyPlaylistSummary[]> {
+  const all: RawOwnPlaylist[] = [];
+  let next: string | null = "/me/playlists?limit=50";
+
+  // Safety cap so a pathological account with 1000+ playlists can't stall.
+  let guard = 8;
+  while (next && guard-- > 0) {
+    const currentPath: string = next;
+    next = null;
+    const page: { items: RawOwnPlaylist[]; next: string | null } = await spotifyUserFetch(
+      currentPath,
+      userAccessToken
+    );
+    all.push(...(page.items ?? []));
+    next = page.next ? new URL(page.next).search : null;
+  }
+
+  return all.map((p) => ({
+    id: p.id,
+    name: p.name,
+    images: mapImages(p.images),
+    owner_name: p.owner?.display_name ?? "Unknown",
+    total_tracks: p.tracks?.total ?? null,
+    description: p.description ?? null,
+  }));
 }
 
 /** Offline fallback used by /api/search when no API keys are configured. */

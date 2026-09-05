@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Disc3, ListMusic, Search as SearchIcon } from "lucide-react";
+import { Disc3, ListMusic, Search as SearchIcon, User } from "lucide-react";
 import type { SpotifyAlbumSummary, SpotifyPlaylistSummary } from "@/types/spotify";
 
 interface RateSearchResponse {
@@ -13,13 +13,52 @@ interface RateSearchResponse {
   error?: string;
 }
 
+interface OwnPlaylistsResponse {
+  playlists?: SpotifyPlaylistSummary[];
+  error?: string;
+  code?: string;
+}
+
 export default function RatePage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [albums, setAlbums] = useState<SpotifyAlbumSummary[]>([]);
   const [playlists, setPlaylists] = useState<SpotifyPlaylistSummary[]>([]);
+  const [ownPlaylists, setOwnPlaylists] = useState<SpotifyPlaylistSummary[]>([]);
+  const [ownError, setOwnError] = useState<string | null>(null);
+  const [ownLoading, setOwnLoading] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load the signed-in user's own playlists (owner/co-creator) via their OAuth token.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/playlists/own", { cache: "no-store" });
+        const data = (await res.json().catch(() => null)) as OwnPlaylistsResponse | null;
+        if (cancelled) return;
+        if (!res.ok) {
+          setOwnPlaylists([]);
+          setOwnError(
+            data?.code === "NOT_CONNECTED"
+              ? null // not connected — silent, the section simply won't show
+              : (data?.error ?? "Could not load your playlists.")
+          );
+        } else {
+          setOwnPlaylists(data?.playlists ?? []);
+          setOwnError(null);
+        }
+      } catch {
+        if (!cancelled) setOwnError("Could not load your playlists.");
+      } finally {
+        if (!cancelled) setOwnLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchResults = useCallback(async (q: string) => {
     if (!q.trim()) {
@@ -88,10 +127,52 @@ export default function RatePage() {
           No albums or playlists found. Try a different query.
         </p>
       )}
-      {!query.trim() && (
+      {!query.trim() && !ownLoading && ownPlaylists.length === 0 && !ownError && (
         <p className="text-center text-zinc-500 py-10 text-sm">
           Type above to find something from the Spotify catalog.
         </p>
+      )}
+
+      {/* Your own playlists (OAuth — owner or co-creator) */}
+      {!query.trim() && (ownLoading || ownPlaylists.length > 0 || ownError) && (
+        <section className="mb-6">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-zinc-300 mb-3">
+            <User className="w-4 h-4 text-spotify-green" /> Your playlists
+          </h2>
+          {ownLoading && <p className="text-xs text-zinc-500 py-3">Loading your playlists…</p>}
+          {ownError && (
+            <p className="text-xs text-amber-300 bg-amber-950/30 border border-amber-900/50 rounded-lg px-3 py-2">
+              {ownError} You can{" "}
+              <Link href="/settings" className="underline hover:text-amber-200">
+                reconnect Spotify in Settings
+              </Link>
+              .
+            </p>
+          )}
+          <div className="space-y-2">
+            {ownPlaylists.map((p) => (
+              <Link
+                key={p.id}
+                href={`/playlists/${p.id}`}
+                className="flex items-center gap-3 p-3 rounded-xl bg-night-800/80 border border-night-700 hover:border-emerald-700/50 transition-colors"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.images[0]?.url ?? ""}
+                  alt={p.name}
+                  className="w-12 h-12 rounded-lg object-cover bg-night-900"
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-white truncate">{p.name}</div>
+                  <div className="text-xs text-zinc-400 truncate">
+                    by {p.owner_name}
+                    {p.total_tracks !== null && ` · ${p.total_tracks} tracks`}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
       )}
 
       {albums.length > 0 && (

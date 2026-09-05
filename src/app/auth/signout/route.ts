@@ -10,6 +10,6 @@ export async function POST() {
   await supabase.auth.signOut();
 
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000";
   return NextResponse.redirect(new URL("/", siteUrl));
 }
