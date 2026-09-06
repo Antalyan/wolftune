@@ -39,7 +39,6 @@ async function getUserRefreshToken(serverSupabase: ReturnType<typeof createClien
     .eq("user_id", userId)
     .maybeSingle();
 
-  console.log("[spotify-debug] getUserRefreshToken:", { userId, hasData: !!data, error: error?.message ?? null });
   if (error || !data) return null;
   return data as SpotifyTokenRow;
 }
@@ -144,8 +143,7 @@ async function exchangeRefreshToken(refreshToken: string, userId: string): Promi
     throw new Error(`Spotify refresh failed: ${res.status} ${txt}`);
   }
 
-  const parsed = (await res.json()) as TokenResponse;
-  return parsed;
+  return (await res.json()) as TokenResponse;
 }
 
 /**
@@ -164,7 +162,6 @@ export async function getUserAccessToken(userId: string): Promise<string | null>
   const tokenRow = await getUserRefreshToken(serverSupabase, userId);
 
   if (!tokenRow?.refresh_token) {
-    console.log("[spotify-debug] getUserAccessToken: no refresh token found");
     return null;
   }
 

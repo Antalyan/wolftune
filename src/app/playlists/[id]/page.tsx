@@ -24,13 +24,9 @@ export default async function PlaylistRatePage({ params }: PlaylistRatePageProps
     data: { user },
   } = await supabase.auth.getUser();
 
-  console.log("[spotify-debug] playlist page:", { userId: user?.id ?? null });
-
   // Playlist contents (/playlists/{id}/tracks) REQUIRE a user OAuth token — the
   // Client Credentials token cannot access this endpoint (403). Require it.
   const userAccessToken = user ? await getUserAccessToken(user.id) : null;
-
-  console.log("[spotify-debug] playlist page:", { hasToken: !!userAccessToken });
 
   if (!userAccessToken) {
     return (

@@ -1,11 +1,35 @@
 # WolfTune 🐺🎵
 
-Music rating and guessing app. Discover, rate, review, and prove your ear.
+Music rating and guessing app. Discover, rate, and prove your ear.
 
 > **Phase 1 ✅** — project foundation, theme, mascot, and navigation shell.
 > **Phase 2 ✅ (code)** — Supabase auth (email + password).
 > **Phase 3 ✅ (code)** — Spotify foundation: server API client, data model v2, playback connect.
+> **Phase 4 ✅ (code)** — Rating experience: per-track + subjective album/playlist ratings.
+> **Phase 5 ✅ (code)** — Groups: per-user/per-group credentials, group member ratings.
+> **Phase 7 ✅ (code)** — Adaptive guessing game: weighted difficulty, per-user/track stats.
 > Follow the setup steps below to activate auth and Spotify with your own keys.
+
+## Key Features
+
+- **Search & Rate** — live Spotify catalog search (tracks/albums); full-track playback
+  via the Spotify embed player (no login required); 10-point ratings per track plus a
+  subjective overall score with notes.
+- **Your Playlists** — connect your own Spotify app in Settings (per-user OAuth) and
+  browse/play only the playlists you own or co-create.
+- **Adaptive Guessing Game** — pick one of your playlists; a weighted picker favors
+  tracks you keep missing. Two modes:
+  - *Type & Match* — type the song and artist; fuzzy (Levenshtein) matching with
+    surname-only and any-artist tolerance.
+  - *Self-Assessment* — listen, reveal the answer, self-report song/artist knowledge.
+  - Per-user/track difficulty (start 2, min 1, grows on failure) with a post-round
+    override modal; per-user/track correct/incorrect stats and live session stats.
+- **Groups & Group Ratings** — share Spotify credentials via a group; see other
+  members' ratings and group leaderboards.
+- **Statistics** — aggregate ratings, best-of lists, and hardest songs/authors derived
+  from guessing data.
+
+For an architecture summary see [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md).
 
 ## Tech Stack
 
@@ -231,13 +255,12 @@ Dark-first design system:
 ```
 src/
 ├── app/            # App Router pages, root layout, auth callback/signout routes
-│   └── api/        # Server routes (search, albums, playlists, spotify me)
+│   └── api/        # Server routes (search, albums, playlists, game, spotify sdk-token)
 ├── components/
 │   ├── auth/       # LoginForm (email sign-in / sign-up)
 │   ├── Navbar.tsx  # server component (loads session)
 │   ├── MobileMenu.tsx
 │   ├── AuthButton.tsx
-│   ├── SpotifyConnectionCard.tsx
 │   ├── SpotifyPlayerProvider.tsx  # Web Playback SDK context
 │   ├── Footer.tsx
 │   └── WolfMascot.tsx
@@ -254,8 +277,8 @@ src/
 - [x] **Phase 1** — Project init, theme, mascot, layout shell
 - [x] **Phase 2** — Supabase auth (email + password) + database schema
 - [x] **Phase 3** — Spotify foundation: server API client, data model v2, playback connect
-- [ ] **Phase 4** — Rating experience: per-track + subjective album/playlist ratings
-- [ ] **Phase 5** — Groups: create, invite, see group members' ratings
+- [x] **Phase 4** — Rating experience: per-track + subjective album/playlist ratings
+- [x] **Phase 5** — Groups: create, invite, see group members' ratings
 - [ ] **Phase 6** — Group statistics: graphs, preferences, best-of lists
-- [ ] **Phase 7** — Guessing game: weighted difficulty, snippet playback, streaks
+- [x] **Phase 7** — Guessing game: weighted difficulty, snippet playback, streaks
 - [ ] **Phase 8** — Polish, deployment, community feed

@@ -10,7 +10,7 @@ export default function AboutPage() {
         </div>
         <h1 className="text-3xl font-extrabold text-white">About WolfTune</h1>
         <p className="text-sm text-zinc-400 mt-2 max-w-md">
-          The music rating & guessing app for true music lovers. Discover, rate, review, and challenge yourself.
+          The music rating & guessing app for true music lovers. Discover, rate, and challenge yourself.
         </p>
       </div>
 
@@ -22,7 +22,7 @@ export default function AboutPage() {
           </div>
           <p className="text-xs text-zinc-400 leading-relaxed">
             Browse a vast music catalog powered by the Spotify Web API. Previews let you listen
-            before you rate. Scores from 1 to 10, plus optional written reviews to explain your taste.
+            before you rate. Scores from 1 to 10 to explain your taste.
           </p>
         </div>
 
@@ -43,7 +43,7 @@ export default function AboutPage() {
             <h2 className="font-bold text-white">Join the Pack</h2>
           </div>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Share your ratings, read community reviews, and find your next favorite song through fellow WolfTuners.
+            Share your ratings and find your next favorite song through fellow WolfTuners.
           </p>
         </div>
       </div>

@@ -12,9 +12,8 @@ import {
   Search as SearchIcon,
   Square,
   KeyRound,
-  Users,
 } from "lucide-react";
-import { SpotifyAlbumSummary, SpotifyPlaylistSummary, SpotifySearchResults, SpotifySearchType, SpotifyTrack } from "@/types/spotify";
+import { SpotifySearchResults, SpotifySearchType, SpotifyTrack } from "@/types/spotify";
 
 interface SearchApiResponse extends SpotifySearchResults {
   credentialStatus?: "ok" | "missing";
@@ -22,8 +21,6 @@ interface SearchApiResponse extends SpotifySearchResults {
   credentialSource?: "user" | "group" | "env";
   groupName?: string | null;
 }
-
-const INITIAL_QUERY = "The Weeknd";
 
 const TYPE_META: Record<SpotifySearchType, { label: string; icon: typeof Music2 }> = {
   track: { label: "Songs", icon: Music2 },
@@ -359,7 +356,7 @@ function TrackRow({
           src={`https://open.spotify.com/embed/track/${track.id}?utm_source=wolftune&theme=0&autoplay=1`}
           width="100%"
           height="152"
-          frameBorder="0"
+          style={{ border: 0 }}
           allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
           loading="lazy"
         />

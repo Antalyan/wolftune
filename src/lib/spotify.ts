@@ -141,15 +141,13 @@ export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials):
  */
 export async function spotifyUserFetch<T>(path: string, userAccessToken: string): Promise<T> {
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
-  console.log("[spotify-debug] spotifyUserFetch:", { url });
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${userAccessToken}` },
     cache: "no-store",
   });
-  console.log("[spotify-debug] spotifyUserFetch response:", { url, status: res.status });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.log("[spotify-debug] spotifyUserFetch error body:", { url, status: res.status, body: body.slice(0, 300) });
+    console.error("[spotify] user API request failed:", res.status, body.slice(0, 300));
     throw await apiErrorFromResponse("user/API", res);
   }
   return (await res.json()) as T;
@@ -389,25 +387,12 @@ export async function getPlaylistWithTracks(
     // fetchWithAuth, which uses absolute URLs as-is (no API_BASE prepend).
     const page: RawTrackPage = await fetchWithAuth<RawTrackPage>(nextUrl);
     const items = page.items ?? [];
-    const sampleItem = items[0];
-    console.log("[spotify-debug] track page:", {
-      url: nextUrl,
-      itemCount: items.length,
-      total: page.total,
-      sampleItemKeys: sampleItem ? Object.keys(sampleItem) : null,
-      sampleTrackKeys: sampleItem?.item ? Object.keys(sampleItem.item) : null,
-      sampleTrackHasId: sampleItem?.item?.id ?? null,
-      sampleTrackName: sampleItem?.item?.name ?? null,
-      isLocal: sampleItem?.is_local ?? null,
-    });
     for (const item of items) {
       if (item?.item?.id) tracks.push(mapTrack(item.item));
     }
     if (page.total != null) total = page.total;
     nextUrl = page.next ?? null;
   }
-
-  console.log("[spotify-debug] getPlaylistWithTracks result:", { playlistName: meta.name, trackCount: tracks.length, total });
 
   return {
     playlist: {
@@ -478,9 +463,6 @@ export function getMockSearch(query: string, types: SpotifySearchType[]): Spotif
   return { tracks, albums: [], playlists: [], source: "mock" };
 }
 
-export function getGamePool(): SpotifyTrack[] {
-  return MOCK_TRACKS;
-}
 const MOCK_TRACKS: SpotifyTrack[] = [
   {
     id: "mock-1",

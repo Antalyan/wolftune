@@ -139,7 +139,6 @@ export async function submitAlbumRating(
   }
 
   revalidatePath(`/albums/${input.albumId}`);
-  revalidatePath("/reviews");
   return { error: null, success: "Album rating saved." };
 }
 
@@ -193,6 +192,5 @@ export async function submitPlaylistRating(
   }
 
   revalidatePath(`/playlists/${input.playlistId}`);
-  revalidatePath("/reviews");
   return { error: null, success: "Playlist rating saved." };
 }

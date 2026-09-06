@@ -58,15 +58,6 @@ export interface SpotifyPlaylistSummary {
 
 export type SpotifySearchType = "track" | "album" | "playlist";
 
-/** Response shape of GET /api/spotify/me. */
-export interface SpotifyMeStatus {
-  connected: boolean;
-  premium?: boolean;
-  spotifyId?: string;
-  displayName?: string | null;
-  error?: string;
-}
-
 /** Normalized search payload returned by /api/search. */
 export interface SpotifySearchResults {
   tracks: SpotifyTrack[];

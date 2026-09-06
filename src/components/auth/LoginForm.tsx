@@ -111,7 +111,7 @@ export function LoginForm() {
         </div>
         <h1 className="text-2xl font-extrabold text-white">Welcome to WolfTune</h1>
         <p className="text-xs text-zinc-400 mt-1 text-center">
-          Sign in to rate tracks, post reviews, and save your game progress.
+          Sign in to rate tracks and save your game progress.
         </p>
       </div>
 

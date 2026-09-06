@@ -19,7 +19,6 @@ export const metadata: Metadata = {
   keywords: [
     "music",
     "ratings",
-    "reviews",
     "spotify",
     "quiz",
     "guessing game",
