@@ -392,12 +392,81 @@ export interface Database {
           }
         ];
       };
+      user_track_difficulty: {
+        Row: {
+          user_id: string;
+          track_spotify_id: string;
+          difficulty: number;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          track_spotify_id: string;
+          difficulty?: number;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          track_spotify_id?: string;
+          difficulty?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_track_difficulty_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      user_track_stats: {
+        Row: {
+          user_id: string;
+          track_spotify_id: string;
+          times_correct: number;
+          times_incorrect: number;
+          last_guessed_at: string | null;
+        };
+        Insert: {
+          user_id: string;
+          track_spotify_id: string;
+          times_correct?: number;
+          times_incorrect?: number;
+          last_guessed_at?: string | null;
+        };
+        Update: {
+          user_id?: string;
+          track_spotify_id?: string;
+          times_correct?: number;
+          times_incorrect?: number;
+          last_guessed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_track_stats_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      increment_track_stats: {
+        Args: {
+          p_user_id: string;
+          p_track_spotify_id: string;
+          p_correct?: number;
+          p_incorrect?: number;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       [_ in never]: never;
@@ -417,3 +486,5 @@ export type MusicTrack = Database["public"]["Tables"]["music_tracks"]["Row"];
 export type TrackRating = Database["public"]["Tables"]["track_ratings"]["Row"];
 export type AlbumRating = Database["public"]["Tables"]["album_ratings"]["Row"];
 export type PlaylistRating = Database["public"]["Tables"]["playlist_ratings"]["Row"];
+export type UserTrackDifficulty = Database["public"]["Tables"]["user_track_difficulty"]["Row"];
+export type UserTrackStats = Database["public"]["Tables"]["user_track_stats"]["Row"];

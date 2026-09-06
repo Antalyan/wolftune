@@ -10,8 +10,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { createClient } from "@/lib/supabase/client";
-
 /* The Web Playback SDK (loaded lazily) attaches itself to window.Spotify. */
 interface SpotifySdkPlayer {
   connect(): Promise<boolean>;
@@ -44,11 +42,16 @@ interface SpotifyPlayerContextValue {
   /** URI of the snippet currently playing, if any. */
   playingUri: string | null;
   /**
-   * Plays a snippet of a full track: seeks to `offsetMs`, plays for
-   * `durationMs`, then pauses automatically. Requires Spotify Premium.
+   * Plays a track starting at `offsetMs`. If `durationMs` is provided, playback
+   * auto-pauses after that long; otherwise the track plays in full. Requires
+   * Spotify Premium.
    */
-  playSnippet: (uri: string, offsetMs: number, durationMs: number) => Promise<void>;
+  playSnippet: (uri: string, offsetMs?: number, durationMs?: number) => Promise<void>;
   stop: () => Promise<void>;
+  /** Pauses current playback (full-track or fallback audio). */
+  pause: () => Promise<void>;
+  /** Resumes previously paused playback (full-track or fallback audio). */
+  resume: () => Promise<void>;
 }
 
 const SpotifyPlayerContext = createContext<SpotifyPlayerContextValue | null>(null);
@@ -67,6 +70,10 @@ function loadSdk(): Promise<void> {
       existing.addEventListener("load", () => resolve(), { once: true });
       return;
     }
+    // The SDK calls window.onSpotifyWebPlaybackSDKReady once loaded — define it
+    // BEFORE injecting the script to avoid "not defined" errors.
+    (window as unknown as { onSpotifyWebPlaybackSDKReady?: () => void }).onSpotifyWebPlaybackSDKReady =
+      () => resolve();
     const script = document.createElement("script");
     script.src = SDK_URL;
     script.async = true;
@@ -89,24 +96,26 @@ export function SpotifyPlayerProvider({ children }: { children: ReactNode }) {
   const snippetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getProviderToken = useCallback(async (): Promise<string | null> => {
-    const supabase = createClient();
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    return session?.provider_token ?? null;
+    // The app connects Spotify through its own OAuth flow (refresh token stored
+    // in `spotify_tokens`), NOT Supabase's built-in Spotify provider. So we get
+    // the access token server-side via /api/spotify/sdk-token instead of
+    // relying on `session.provider_token`.
+    try {
+      const res = await fetch("/api/spotify/sdk-token", { cache: "no-store" });
+      if (!res.ok) return null;
+      const data = (await res.json()) as { accessToken?: string };
+      return data.accessToken ?? null;
+    } catch {
+      return null;
+    }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      const hasSpotify = session?.user.identities?.some((i) => i.provider === "spotify");
-      if (!hasSpotify) {
+      const token = await getProviderToken();
+      if (!token) {
         setReady(true); // ready, but no Spotify identity → provider stays idle
         return;
       }
@@ -121,8 +130,8 @@ export function SpotifyPlayerProvider({ children }: { children: ReactNode }) {
         name: "WolfTune Web Player",
         volume: 0.7,
         getOAuthToken: (cb) => {
-          getProviderToken().then((token) => {
-            if (token) cb(token);
+          getProviderToken().then((tok) => {
+            if (tok) cb(tok);
           });
         },
       });
@@ -159,39 +168,83 @@ export function SpotifyPlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [getProviderToken]);
 
+  /** Pauses playback, tolerating failures (e.g. device already idle). */
+  const stopInternal = useCallback(async () => {
+    try {
+      await playerRef.current?.pause();
+    } catch {
+      /* device may already be idle */
+    }
+  }, []);
+
   const playSnippet = useCallback(
-    async (uri: string, offsetMs: number, durationMs: number) => {
-      const player = playerRef.current;
-      if (!player) throw new Error("Spotify player is not ready yet.");
+    async (uri: string, offsetMs = 0, durationMs?: number) => {
+      // The Web Playback SDK's pause/resume/seek can only control ALREADY
+      // loaded playback — they cannot start a track. Starting playback of a
+      // specific URI requires the Web API PUT /me/player/play with the
+      // device_id of this browser tab's player.
+      const token = await getProviderToken();
+      if (!token) throw new Error("Spotify is not connected.");
+      if (!deviceId) throw new Error("Spotify player device is not ready yet.");
 
-      if (snippetTimeoutRef.current) clearTimeout(snippetTimeoutRef.current);
-      await player.pause();
+      if (snippetTimeoutRef.current) {
+        clearTimeout(snippetTimeoutRef.current);
+        snippetTimeoutRef.current = null;
+      }
 
-      // The Web Playback SDK authenticates internally via the getOAuthToken
-      // callback — the user's OAuth token never appears in client code.
-      const clampedOffset = Math.max(0, Math.min(offsetMs, Math.max(durationMs - SNIPPET_MAX_MS - 1000, 0)));
-      await player.seek(clampedOffset);
-      await player.resume();
+      const maxOffset = durationMs !== undefined ? Math.max(durationMs - 1000, 0) : 0;
+      const clampedOffset = Math.max(0, Math.min(offsetMs, maxOffset));
+      const res = await fetch(
+        `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(deviceId)}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ uris: [uri], position_ms: clampedOffset }),
+        }
+      );
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`Spotify playback failed (${res.status}): ${body.slice(0, 200)}`);
+      }
 
       setPlayingUri(uri);
-      const snippetMs = Math.min(SNIPPET_MAX_MS, Math.max(durationMs - clampedOffset, 1000));
-      snippetTimeoutRef.current = setTimeout(() => {
-        playerRef.current?.pause();
-        setPlayingUri(null);
-      }, snippetMs);
+      // Without durationMs the track plays in full — no auto-pause timer.
+      if (durationMs !== undefined) {
+        const snippetMs = Math.min(SNIPPET_MAX_MS, Math.max(durationMs - clampedOffset, 1000));
+        snippetTimeoutRef.current = setTimeout(() => {
+          snippetTimeoutRef.current = null;
+          void stopInternal();
+          setPlayingUri(null);
+        }, snippetMs);
+      }
     },
-    []
+    [deviceId, getProviderToken, stopInternal]
   );
 
   const stop = useCallback(async () => {
     if (snippetTimeoutRef.current) clearTimeout(snippetTimeoutRef.current);
-    await playerRef.current?.pause();
+    await stopInternal();
     setPlayingUri(null);
+  }, [stopInternal]);
+
+  const pause = useCallback(async () => {
+    await stopInternal();
+  }, [stopInternal]);
+
+  const resume = useCallback(async () => {
+    try {
+      await playerRef.current?.resume();
+    } catch {
+      /* nothing to resume */
+    }
   }, []);
 
   const value = useMemo(
-    () => ({ deviceId, ready, playingUri, playSnippet, stop }),
-    [deviceId, ready, playingUri, playSnippet, stop]
+    () => ({ deviceId, ready, playingUri, playSnippet, stop, pause, resume }),
+    [deviceId, ready, playingUri, playSnippet, stop, pause, resume]
   );
 
   return <SpotifyPlayerContext.Provider value={value}>{children}</SpotifyPlayerContext.Provider>;

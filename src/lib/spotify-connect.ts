@@ -13,7 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 
 /** Scopes required to read the user's own + shared-with-them playlists. */
 export const SPOTIFY_SCOPES =
-  "playlist-read-private playlist-read-collaborative user-read-email";
+  "playlist-read-private playlist-read-collaborative user-read-email streaming user-read-playback-state user-modify-playback-state";
 
 /** Spotify authorization + token endpoints. */
 const AUTHORIZE_URL = "https://accounts.spotify.com/authorize";

@@ -8,7 +8,12 @@ import {
 import { resolveSpotifyCredentials } from "@/lib/spotify-credentials";
 import { getUserAccessToken } from "@/lib/spotify-user-token";
 import { createClient } from "@/lib/supabase/server";
-import { SpotifySearchType } from "@/types/spotify";
+import {
+  SpotifyAlbumSummary,
+  SpotifyPlaylistSummary,
+  SpotifySearchType,
+  SpotifyTrack,
+} from "@/types/spotify";
 
 export const dynamic = "force-dynamic";
 
@@ -83,8 +88,8 @@ export async function GET(request: Request) {
 
   try {
     // Search tracks + albums publicly (Client Credentials)
-    let tracks = [];
-    let albums = [];
+    let tracks: SpotifyTrack[] = [];
+    let albums: SpotifyAlbumSummary[] = [];
     if (publicTypes.length > 0 && credentials) {
       const results = await searchSpotify(query, {
         types: publicTypes,
@@ -96,7 +101,7 @@ export async function GET(request: Request) {
     }
 
     // Search the user's own playlists (owner + collaborative) via OAuth
-    let playlists = [];
+    let playlists: SpotifyPlaylistSummary[] = [];
     if (resolvedTypes.includes("playlist") && userAccessToken) {
       const ownPlaylists = await listOwnPlaylists(userAccessToken);
       const q = query.toLowerCase();
