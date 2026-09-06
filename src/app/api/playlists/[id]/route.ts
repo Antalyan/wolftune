@@ -13,6 +13,8 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   // Client Credentials token cannot access this endpoint (403). Require it.
   const userAccessToken = user ? await getUserAccessToken(user.id) : null;
 
+  console.log("[spotify-debug] /api/playlists/[id]:", { userId: user?.id ?? null, hasToken: !!userAccessToken });
+
   if (!userAccessToken) {
     return NextResponse.json(
       {

@@ -18,7 +18,9 @@ create table if not exists spotify_tokens (
 alter table public.spotify_tokens
   add column if not exists refresh_token text not null,
   add column if not exists scope text,
-  add column if not exists expires_at timestamptz;
+  add column if not exists expires_at timestamptz,
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists updated_at timestamptz not null default now();
 
 -- Enable RLS immediately so Supabase's security advisor is satisfied
 alter table public.spotify_tokens enable row level security;

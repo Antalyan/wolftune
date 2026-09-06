@@ -107,8 +107,9 @@ async function apiErrorFromResponse(context: string, res: Response): Promise<Spo
 
 /** Authenticated GET against the Web API; retries once with a fresh token on 401. */
 export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials): Promise<T> {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
   const token = await getAccessToken(creds);
-  const first = await fetch(`${API_BASE}${path}`, {
+  const first = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
@@ -122,7 +123,7 @@ export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials):
   }
 
   tokenCache.delete(creds?.clientId ?? process.env.SPOTIFY_CLIENT_ID ?? "");
-  const second = await fetch(`${API_BASE}${path}`, {
+  const second = await fetch(url, {
     headers: { Authorization: `Bearer ${await getAccessToken(creds)}` },
     cache: "no-store",
   });
@@ -139,11 +140,16 @@ export async function spotifyFetch<T>(path: string, creds?: SpotifyCredentials):
  * for apps in development mode.
  */
 export async function spotifyUserFetch<T>(path: string, userAccessToken: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  console.log("[spotify-debug] spotifyUserFetch:", { url });
+  const res = await fetch(url, {
     headers: { Authorization: `Bearer ${userAccessToken}` },
     cache: "no-store",
   });
+  console.log("[spotify-debug] spotifyUserFetch response:", { url, status: res.status });
   if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.log("[spotify-debug] spotifyUserFetch error body:", { url, status: res.status, body: body.slice(0, 300) });
     throw await apiErrorFromResponse("user/API", res);
   }
   return (await res.json()) as T;
@@ -352,7 +358,11 @@ export async function getPlaylistWithTracks(
   };
 
   type RawTrackPage = {
-    items?: { track: RawTrack | null }[] | null;
+    items?: {
+      item: RawTrack | null;
+      is_local?: boolean;
+      added_at?: string;
+    }[] | null;
     next?: string | null;
     total?: number | null;
   };
@@ -367,25 +377,37 @@ export async function getPlaylistWithTracks(
     `/playlists/${encodeURIComponent(playlistId)}`
   );
 
-  // 2. Fetch tracks from the dedicated /tracks endpoint with pagination.
+  // 2. Fetch tracks from the dedicated /items endpoint with pagination.
+  //    (The /tracks endpoint is deprecated and returns 403 for some playlists.)
   const tracks: SpotifyTrack[] = [];
-  let nextUrl: string | null = `/playlists/${encodeURIComponent(playlistId)}/tracks?limit=100`;
+  let nextUrl: string | null = `/playlists/${encodeURIComponent(playlistId)}/items?limit=100`;
   let total = meta.tracks?.total ?? null;
   let guard = 5; // safety cap (~600 tracks)
 
   while (nextUrl && guard-- > 0) {
-    // Spotify returns `next` as an absolute URL; extract just the path+query
-    // since fetchWithAuth prepends API_BASE.
-    const parsed = new URL(nextUrl, API_BASE);
-    const pathAndQuery: string = `${parsed.pathname}${parsed.search}`;
-    const page = await fetchWithAuth<RawTrackPage>(pathAndQuery);
+    // Spotify returns `next` as an absolute URL — pass it directly to
+    // fetchWithAuth, which uses absolute URLs as-is (no API_BASE prepend).
+    const page: RawTrackPage = await fetchWithAuth<RawTrackPage>(nextUrl);
     const items = page.items ?? [];
+    const sampleItem = items[0];
+    console.log("[spotify-debug] track page:", {
+      url: nextUrl,
+      itemCount: items.length,
+      total: page.total,
+      sampleItemKeys: sampleItem ? Object.keys(sampleItem) : null,
+      sampleTrackKeys: sampleItem?.item ? Object.keys(sampleItem.item) : null,
+      sampleTrackHasId: sampleItem?.item?.id ?? null,
+      sampleTrackName: sampleItem?.item?.name ?? null,
+      isLocal: sampleItem?.is_local ?? null,
+    });
     for (const item of items) {
-      if (item?.track?.id) tracks.push(mapTrack(item.track));
+      if (item?.item?.id) tracks.push(mapTrack(item.item));
     }
     if (page.total != null) total = page.total;
     nextUrl = page.next ?? null;
   }
+
+  console.log("[spotify-debug] getPlaylistWithTracks result:", { playlistName: meta.name, trackCount: tracks.length, total });
 
   return {
     playlist: {
@@ -421,14 +443,14 @@ export async function listOwnPlaylists(userAccessToken: string): Promise<Spotify
   // Safety cap so a pathological account with 1000+ playlists can't stall.
   let guard = 8;
   while (next && guard-- > 0) {
-    const currentPath: string = next;
-    next = null;
+    // Spotify returns `next` as an absolute URL — pass it directly to
+    // spotifyUserFetch, which uses absolute URLs as-is.
     const page: { items: RawOwnPlaylist[]; next: string | null } = await spotifyUserFetch(
-      currentPath,
+      next,
       userAccessToken
     );
     all.push(...(page.items ?? []));
-    next = page.next ? new URL(page.next).search : null;
+    next = page.next ?? null;
   }
 
   return all.map((p) => ({

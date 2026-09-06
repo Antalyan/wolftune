@@ -39,6 +39,7 @@ async function getUserRefreshToken(serverSupabase: ReturnType<typeof createClien
     .eq("user_id", userId)
     .maybeSingle();
 
+  console.log("[spotify-debug] getUserRefreshToken:", { userId, hasData: !!data, error: error?.message ?? null });
   if (error || !data) return null;
   return data as SpotifyTokenRow;
 }
@@ -163,6 +164,7 @@ export async function getUserAccessToken(userId: string): Promise<string | null>
   const tokenRow = await getUserRefreshToken(serverSupabase, userId);
 
   if (!tokenRow?.refresh_token) {
+    console.log("[spotify-debug] getUserAccessToken: no refresh token found");
     return null;
   }
 
