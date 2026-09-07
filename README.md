@@ -26,8 +26,14 @@ Music rating and guessing app. Discover, rate, and prove your ear.
     override modal; per-user/track correct/incorrect stats and live session stats.
 - **Groups & Group Ratings** — share Spotify credentials via a group; see other
   members' ratings and group leaderboards.
-- **Statistics** — aggregate ratings, best-of lists, and hardest songs/authors derived
-  from guessing data.
+- **Statistics** — aggregate ratings, best-of lists, taste similarity between members,
+  hardest songs/authors derived from guessing data, and an browsable overview of the
+  group's planned ratings.
+- **My Ratings** — a personal page to search, sort and browse every album and playlist
+  you've rated, with direct links to re-rate them.
+- **Group Rating Plans** — members of a group collaboratively plan what to rate and who
+  rates it, on which date. Plans are editable by any member and show up in statistics;
+  completing a plan works through the normal rating flow.
 
 For an architecture summary see [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md).
 
@@ -122,6 +128,14 @@ Open **Supabase Dashboard → SQL Editor** and run, in order:
    user profiles (auto-created on signup)
 2. [`supabase/migrations/20260903_phase3_data_model_v2.sql`](supabase/migrations/20260903_phase3_data_model_v2.sql) —
    catalog snapshots + track ratings + subjective album/playlist ratings
+3. [`supabase/migrations/20260903_phase3_groups_and_credentials.sql`](supabase/migrations/20260903_phase3_groups_and_credentials.sql) —
+   groups, memberships, per-user/per-group Spotify credentials
+4. [`supabase/migrations/20260905_spotify_oauth_tokens.sql`](supabase/migrations/20260905_spotify_oauth_tokens.sql) —
+   `spotify_tokens` for user OAuth connections
+5. [`supabase/migrations/20260906_guessing_game.sql`](supabase/migrations/20260906_guessing_game.sql) —
+   per-user track difficulty, stats and the `increment_track_stats` RPC
+6. [`supabase/migrations/20260907_group_rating_plans.sql`](supabase/migrations/20260907_group_rating_plans.sql) —
+   group rating plans (scheduled dates, assigned members, album/playlist targets)
 
 ### 3. Email provider (enabled by default)
 
@@ -254,22 +268,63 @@ Dark-first design system:
 
 ```
 src/
-├── app/            # App Router pages, root layout, auth callback/signout routes
-│   └── api/        # Server routes (search, albums, playlists, game, spotify sdk-token)
+├── app/                        # App Router pages & layouts
+│   ├── albums/[id]/            # album detail + rating page
+│   ├── api/                    # server routes
+│   │   ├── albums/[id]/        # album metadata proxy
+│   │   ├── game/               # difficulty + round result
+│   │   ├── groups/[groupId]/   # group ratings + credentials
+│   │   ├── playlists/[id/&/own/]  # playlist metadata + user's own playlists
+│   │   ├── search/             # catalog search (Spotify proxy)
+│   │   ├── settings/spotify/   # save client credentials
+│   │   └── spotify/sdk-token/  # Web Playback SDK access token
+│   ├── auth/                   # login, callback, signout
+│   ├── game/                   # adaptive guessing game
+│   ├── groups/                 # group list, detail & server actions
+│   ├── leaderboard/            # group leaderboard + group switcher
+│   ├── my-ratings/             # browse all your ratings (albums + playlists)
+│   ├── playlists/[id]/         # playlist detail + rating page
+│   ├── rate/                   # rate landing page
+│   ├── search/                 # catalog search (client component)
+│   ├── settings/               # profile, Spotify connection & credentials
+│   ├── stats/                  # group statistics (best-of, similarity, plans)
+│   └── (about, privacy, terms, layout, page, globals.css, not-found)
 ├── components/
-│   ├── auth/       # LoginForm (email sign-in / sign-up)
-│   ├── Navbar.tsx  # server component (loads session)
+│   ├── auth/LoginForm.tsx
+│   ├── Navbar.tsx              # server component (loads session)
 │   ├── MobileMenu.tsx
 │   ├── AuthButton.tsx
-│   ├── SpotifyPlayerProvider.tsx  # Web Playback SDK context
+│   ├── ConnectSpotifyButton.tsx
+│   ├── CopyInviteCodeButton.tsx
+│   ├── CredentialGate.tsx
 │   ├── Footer.tsx
-│   └── WolfMascot.tsx
+│   ├── GroupCredentialsForm.tsx
+│   ├── GroupForm.tsx
+│   ├── GroupList.tsx
+│   ├── GroupMembersList.tsx
+│   ├── GroupRatingsPanel.tsx
+│   ├── RatingForm.tsx          # album/playlist rating (client)
+│   ├── SpotifyCredentialsBanner.tsx
+│   ├── SpotifyPlayerProvider.tsx
+│   ├── WolfMascot.tsx
+│   └── nav-links.ts
 ├── lib/
-│   ├── supabase/   # client, server, middleware session refresh, env validation
-│   ├── spotify.ts  # server-only Web API client (cached token)
+│   ├── catalog.ts              # catalog snapshot upserts (idempotent)
+│   ├── game.ts                 # guessing-game logic (weighted pick, scoring)
+│   ├── groups.ts               # group queries (membership, leaderboard)
+│   ├── rating-plans.ts         # group rating-plan queries
+│   ├── spotify.ts              # server-only Spotify Web API client
+│   ├── spotify-connect.ts      # OAuth scopes + connect URL builder
+│   ├── spotify-credentials.ts  # per-user/per-group/env credential resolution
+│   ├── spotify-user-token.ts   # per-user OAuth access-token refresh
+│   ├── stats.ts                # group statistics aggregations
+│   ├── supabase/               # client, server, env validation
 │   └── utils.ts
-├── middleware.ts   # session cookie refresh on every request
-└── types/          # Spotify + Supabase (Database) data models
+├── middleware.ts               # session cookie refresh on every request
+└── types/
+    ├── database.ts             # Supabase Row / Insert / Update types
+    ├── rating.ts               # score constants + RateActionResult
+    └── spotify.ts              # Spotify API data models
 ```
 
 ## Roadmap
@@ -279,6 +334,7 @@ src/
 - [x] **Phase 3** — Spotify foundation: server API client, data model v2, playback connect
 - [x] **Phase 4** — Rating experience: per-track + subjective album/playlist ratings
 - [x] **Phase 5** — Groups: create, invite, see group members' ratings
-- [ ] **Phase 6** — Group statistics: graphs, preferences, best-of lists
+- [x] **Phase 6** — Group statistics: best-of lists, taste similarity
 - [x] **Phase 7** — Guessing game: weighted difficulty, snippet playback, streaks
+- [x] **Phase 9** — Group rating plans + personal "My Ratings" browser
 - [ ] **Phase 8** — Polish, deployment, community feed

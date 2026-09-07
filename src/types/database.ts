@@ -124,6 +124,55 @@ export interface Database {
           }
         ];
       };
+      group_rating_plans: {
+        Row: {
+          id: string;
+          group_id: string;
+          album_spotify_id: string | null;
+          playlist_spotify_id: string | null;
+          assigned_member_id: string;
+          scheduled_date: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          album_spotify_id?: string | null;
+          playlist_spotify_id?: string | null;
+          assigned_member_id: string;
+          scheduled_date: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          album_spotify_id?: string | null;
+          playlist_spotify_id?: string | null;
+          assigned_member_id?: string;
+          scheduled_date?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "group_rating_plans_group_id_fkey";
+            columns: ["group_id"];
+            isOneToOne: false;
+            referencedRelation: "groups";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "group_rating_plans_assigned_member_id_fkey";
+            columns: ["assigned_member_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+
       music_albums: {
         Row: {
           spotify_id: string;
@@ -452,8 +501,8 @@ export interface Database {
             referencedColumns: ["id"];
           }
         ];
+            };
       };
-    };
     Views: {
       [_ in never]: never;
     };
@@ -480,6 +529,9 @@ export interface Database {
 export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type Group = Database["public"]["Tables"]["groups"]["Row"];
 export type GroupMember = Database["public"]["Tables"]["group_members"]["Row"];
+export type GroupRatingPlan = Database["public"]["Tables"]["group_rating_plans"]["Row"];
+export type GroupRatingPlanInsert = Database["public"]["Tables"]["group_rating_plans"]["Insert"];
+export type GroupRatingPlanUpdate = Database["public"]["Tables"]["group_rating_plans"]["Update"];
 export type MusicAlbum = Database["public"]["Tables"]["music_albums"]["Row"];
 export type MusicPlaylist = Database["public"]["Tables"]["music_playlists"]["Row"];
 export type MusicTrack = Database["public"]["Tables"]["music_tracks"]["Row"];

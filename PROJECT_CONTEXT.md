@@ -75,6 +75,7 @@ over their own playlists. Groups let users share Spotify credentials and compare
 3. `20260903_phase3_groups_and_credentials.sql` — groups, memberships, credentials
 4. `20260905_spotify_oauth_tokens.sql` — `spotify_tokens`
 5. `20260906_guessing_game.sql` — `user_track_difficulty`, `user_track_stats`, RPC
+6. `20260907_group_rating_plans.sql` — `group_rating_plans` (scheduled dates, assigned member, album/playlist target)
 
 ## Useful Commands
 

@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
+import { getGroupRatingPlans, type RatingPlanEntry } from "@/lib/rating-plans";
 
 /**
  * Group statistics (Phase 4). All aggregations are computed in TypeScript from
@@ -292,4 +293,12 @@ export async function getMemberSimilarities(
   }
 
   return results.sort((x, y) => (y.correlation ?? -2) - (x.correlation ?? -2));
+}
+
+/** Rating plans for a group, surfaced in statistics. Reuses the rating-plans lib. */
+export async function getGroupPlansForStats(
+  supabase: SupabaseClient<Database>,
+  groupId: string
+): Promise<RatingPlanEntry[]> {
+  return getGroupRatingPlans(supabase, groupId);
 }
