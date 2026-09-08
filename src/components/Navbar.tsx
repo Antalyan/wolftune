@@ -79,15 +79,9 @@ export async function Navbar() {
                     )}
                 </nav>
 
-                {/* Right side: auth + CTA + mobile toggle */}
+                {/* Right side: auth + mobile toggle */}
                 <div className="flex items-center gap-3">
                     <AuthButton user={user}/>
-                    <Link
-                        href="/game"
-                        className="hidden sm:inline-flex items-center justify-center text-sm font-semibold px-4 py-2 rounded-lg bg-spotify-green hover:bg-spotify-bright text-night-950 shadow-lg shadow-emerald-500/20 transition-all"
-                    >
-                        Play Now
-                    </Link>
                     <MobileMenu links={navLinks} user={user}/>
                 </div>
             </div>

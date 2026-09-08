@@ -407,6 +407,29 @@ export async function getPlaylistWithTracks(
   };
 }
 
+/**
+ * Fetches full track objects by Spotify ids (max 50 per call).
+ * Used to backfill the catalog (e.g. guessing-history tracks that were played
+ * before snapshot caching was introduced).
+ */
+export async function getTracksByIds(
+  ids: string[],
+  creds?: SpotifyCredentials
+): Promise<SpotifyTrack[]> {
+  const tracks: SpotifyTrack[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50);
+    const page = await spotifyFetch<{ tracks: (RawTrack | null)[] }>(
+      `/tracks?ids=${batch.map(encodeURIComponent).join(",")}`,
+      creds
+    );
+    for (const t of page.tracks ?? []) {
+      if (t?.id) tracks.push(mapTrack(t));
+    }
+  }
+  return tracks;
+}
+
 type RawOwnPlaylist = {
   id: string;
   name: string;

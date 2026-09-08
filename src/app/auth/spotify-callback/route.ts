@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { resolveSiteUrl } from "@/lib/site-url";
 import { saveSpotifyRefreshToken, clearCachedAccessToken } from "@/lib/spotify-user-token";
 
 /**
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
   const state = url.searchParams.get("state");
   const spotifyError = url.searchParams.get("error");
 
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000";
+  const origin = resolveSiteUrl(request);
 
   const fail = (reason: string) =>
     NextResponse.redirect(new URL(`/settings?spotify=error&reason=${encodeURIComponent(reason)}`, origin));

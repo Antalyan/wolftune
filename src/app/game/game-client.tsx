@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Headphones,
   Flame,
@@ -8,6 +9,7 @@ import {
   ListMusic,
   Pencil,
   Eye,
+  History as HistoryIcon,
 } from "lucide-react";
 import type { SpotifyTrack } from "@/types/spotify";
 import { WolfMascot } from "@/components/WolfMascot";
@@ -61,6 +63,12 @@ export default function GameClient() {
   const [artistCorrect, setArtistCorrect] = useState(false);
   const [newDifficulty, setNewDifficulty] = useState(2);
   const [outcome, setOutcome] = useState<"both_correct" | "one_correct" | "both_wrong">("both_correct");
+
+  /** Latest pool snapshot for stale-closure-proof round advancement. */
+  const trackPoolRef = useRef<TrackWithDifficulty[]>([]);
+  useEffect(() => {
+    trackPoolRef.current = trackPool;
+  }, [trackPool]);
 
   // Self-assessment
   const [selfSongKnew, setSelfSongKnew] = useState<boolean | null>(null);
@@ -246,34 +254,42 @@ export default function GameClient() {
     const finalArtistCorrect = override?.artist ?? artistCorrect;
     const finalDifficulty = override?.difficulty ?? newDifficulty;
 
-    // Save to server
-    await fetch("/api/game/result", {
+    // Persist best-effort WITHOUT awaiting it — the round must advance and
+    // stats must update instantly even if the request is slow or fails.
+    void fetch("/api/game/result", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         trackId: currentTrack.id,
         trackName: currentTrack.name,
         artistName: currentTrack.artists[0]?.name ?? "Unknown",
+        albumName: currentTrack.album?.name ?? null,
+        coverUrl: currentTrack.album?.images?.[0]?.url ?? null,
         songCorrect: finalSongCorrect,
         artistCorrect: finalArtistCorrect,
         newDifficulty: finalDifficulty,
         mode,
       }),
+    }).catch(() => {
+      // Ignore save errors — the game continues and session stats still update.
     });
 
-    // Update session stats
+    // Update session stats immediately (before any network round-trip).
     setStats((prev) => recordRound(prev, currentTrack, finalSongCorrect, finalArtistCorrect));
 
-    // Update local pool difficulty
-    setTrackPool((prev) =>
-      prev.map((t) =>
+    // Update the local pool difficulty and pick the next track from the
+    // FRESH pool (functional update — no stale closure).
+    let nextPool: TrackWithDifficulty[] = [];
+    setTrackPool((prev) => {
+      nextPool = prev.map((t) =>
         t.track.id === currentTrack.id ? { ...t, difficulty: finalDifficulty } : t
-      )
-    );
+      );
+      return nextPool;
+    });
 
     // Next round
-    pickNextTrack(trackPool);
-  }, [currentTrack, selectedPlaylist, songCorrect, artistCorrect, newDifficulty, mode, trackPool, pickNextTrack]);
+    pickNextTrack(nextPool.length > 0 ? nextPool : trackPoolRef.current);
+  }, [currentTrack, selectedPlaylist, songCorrect, artistCorrect, newDifficulty, mode, pickNextTrack]);
 
   // Open override modal
   const openOverride = useCallback(() => {
@@ -295,7 +311,15 @@ export default function GameClient() {
   if (phase === "select") {
     return (
       <div className="max-w-2xl mx-auto px-4 py-8 w-full">
-        <h1 className="text-2xl font-extrabold text-white mb-2">Guessing Game</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-2xl font-extrabold text-white">Guessing Game</h1>
+          <Link
+            href="/game/history"
+            className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors flex items-center gap-1"
+          >
+            <HistoryIcon className="w-3.5 h-3.5" /> History
+          </Link>
+        </div>
         <p className="text-sm text-zinc-400 mb-6">Pick a playlist to start guessing. Tracks you struggle with appear more often.</p>
 
         {playlistsLoading && <p className="text-zinc-400">Loading playlists...</p>}

@@ -1,6 +1,7 @@
 "use client";
 
-import {useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
+import Link from "next/link";
 import {useFormState} from "react-dom";
 import {
     addPlanEntry,
@@ -146,7 +147,17 @@ function PlanRow({plan, onEdit}: { plan: RatingPlanEntry; onEdit: () => void }) 
 
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                    <span className="text-sm text-white truncate">{plan.target.name}</span>
+                    <Link
+                        href={
+                            plan.target.kind === "album"
+                                ? `/albums/${plan.target.spotifyId}`
+                                : `/playlists/${plan.target.spotifyId}`
+                        }
+                        className="text-sm text-white truncate hover:text-blue-300 hover:underline underline-offset-2 transition-colors"
+                        title={plan.target.kind === "album" ? "View album" : "View playlist"}
+                    >
+                        {plan.target.name}
+                    </Link>
                     {plan.done ? (
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0"/>
                     ) : past ? (
@@ -156,11 +167,9 @@ function PlanRow({plan, onEdit}: { plan: RatingPlanEntry; onEdit: () => void }) 
                 <div className="flex items-center gap-2 text-[11px] text-zinc-400">
                     <span className="truncate">{plan.target.subtitle}</span>
                     <span className="text-zinc-600">·</span>
-                    <span className="flex items-center gap-1">
-            <UserCircle className="w-3 h-3"/>
-                        {plan.assignedMember.userId === plan.assignedMember.username
-                            ? plan.assignedMember.username
-                            : plan.assignedMember.username}
+                    <span className="flex items-center gap-1 min-w-0">
+            <UserCircle className="w-3 h-3 shrink-0"/>
+                        <span className="truncate">{plan.assignedMember.username}</span>
           </span>
                     <span className="text-zinc-600">·</span>
                     <span>{fmtDate(plan.scheduledDate)}</span>
@@ -285,24 +294,19 @@ function PlanForm({groupId, members, mode, initial, onDone}: FormProps) {
 
             <div>
                 <label className="block text-[11px] font-medium text-zinc-400 mb-1">
-                    {targetKind === "album" ? "Album Spotify ID or URL" : "Playlist Spotify ID or URL"}
+                    {targetKind === "album" ? "Choose an album" : "Choose a playlist"}
                 </label>
-                <input
-                    key={targetKind}
-                    type="text"
-                    name={targetKind === "album" ? "album_spotify_id" : "playlist_spotify_id"}
-                    required
-                    disabled={pending}
-                    defaultValue={
-                        initial?.target.kind === targetKind ? initial.target.spotifyId : ""
-                    }
-                    placeholder={targetKind === "album" ? "e.g. 4aawyAB9vmqN3uQ7FjRGTy" : "e.g. 37i9dQZF1DXcBWIGoYBM5M"}
-                    className="w-full px-2.5 py-1.5 rounded-lg bg-night-800 border border-night-700 text-white placeholder-zinc-500 text-sm focus:outline-none focus:border-blue-500 font-mono"
-                />
-                <p className="text-[10px] text-zinc-600 mt-1">
-                    Paste a Spotify ID or a full open.spotify.com link — the ID is extracted
-                    automatically.
-                </p>
+                <div key={targetKind}>
+                    <TargetSearchPicker
+                        kind={targetKind}
+                        initial={
+                            initial?.target.kind === targetKind
+                                ? {id: initial.target.spotifyId, name: initial.target.name, sub: initial.target.subtitle}
+                                : null
+                        }
+                        pending={pending}
+                    />
+                </div>
             </div>
 
             {state?.error && (
@@ -333,5 +337,181 @@ function PlanForm({groupId, members, mode, initial, onDone}: FormProps) {
                 </button>
             </div>
         </form>
+    );
+}
+
+interface PickedTarget {
+    id: string;
+    name: string;
+    sub: string;
+}
+
+interface SearchResultItem {
+    id: string;
+    name: string;
+    sub: string;
+    coverUrl: string | null;
+}
+
+interface TargetSearchPickerProps {
+    kind: "album" | "playlist";
+    initial: PickedTarget | null;
+    pending: boolean;
+}
+
+function TargetSearchPicker({kind, initial, pending}: TargetSearchPickerProps) {
+    const fieldName = kind === "album" ? "album_spotify_id" : "playlist_spotify_id";
+    const [chosen, setChosen] = useState<PickedTarget | null>(initial);
+    const [query, setQuery] = useState("");
+    const [results, setResults] = useState<SearchResultItem[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [searched, setSearched] = useState(false);
+    const [manual, setManual] = useState("");
+    const abortRef = useRef<AbortController | null>(null);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const runSearch = useCallback(async (q: string) => {
+        const trimmed = q.trim();
+        if (!trimmed) {
+            setResults([]);
+            setSearched(false);
+            return;
+        }
+        abortRef.current?.abort();
+        abortRef.current = new AbortController();
+        setLoading(true);
+        setSearched(true);
+        try {
+            const params = new URLSearchParams({q: trimmed, types: kind});
+            const res = await fetch(`/api/search?${params.toString()}`, {
+                signal: abortRef.current.signal,
+                cache: "no-store",
+            });
+            if (!res.ok) {
+                const body = (await res.json().catch(() => null)) as { error?: string } | null;
+                throw new Error(body?.error ?? "Search failed.");
+            }
+            const data = await res.json();
+            const items = (kind === "album" ? data.albums ?? [] : data.playlists ?? []) as Array<{
+                id: string;
+                name: string;
+                artist_name?: string;
+                owner_name?: string;
+                images?: Array<{url?: string}> | null;
+            }>;
+            setResults(
+                items.map((item) => ({
+                    id: item.id,
+                    name: item.name,
+                    sub: kind === "album" ? item.artist_name ?? "" : item.owner_name ?? "",
+                    coverUrl: item.images?.[0]?.url ?? null,
+                }))
+            );
+        } catch (err: unknown) {
+            if (err instanceof DOMException && err.name === "AbortError") return;
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [kind]);
+
+    useEffect(() => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => runSearch(query), 400);
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, [query, runSearch]);
+
+    const reset = () => {
+        setChosen(null);
+        setQuery("");
+        setResults([]);
+        setSearched(false);
+        setManual("");
+    };
+
+    if (chosen) {
+        return (
+            <div className="space-y-2">
+                <input type="hidden" name={fieldName} value={chosen.id}/>
+                <div className="flex items-center gap-2 rounded-lg bg-blue-500/10 border border-blue-500/30 px-2.5 py-2">
+                    <span className="text-xs text-white font-medium truncate">{chosen.name}</span>
+                    <span className="text-[11px] text-zinc-400 truncate">{chosen.sub}</span>
+                    <button
+                        type="button"
+                        disabled={pending}
+                        onClick={reset}
+                        className="ml-auto shrink-0 text-[11px] text-blue-300 hover:text-white disabled:opacity-50"
+                    >
+                        Change
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-2">
+            <input type="hidden" name={fieldName} value=""/>
+            <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={pending}
+                placeholder={`Search ${kind}s…`}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-night-800 border border-night-700 text-white placeholder-zinc-500 text-sm focus:outline-none focus:border-blue-500"
+            />
+
+            {loading && <p className="text-[11px] text-zinc-500">Searching…</p>}
+
+            {!loading && searched && results.length === 0 && (
+                <p className="text-[11px] text-zinc-500">No results. Paste a Spotify link below instead.</p>
+            )}
+
+            {results.length > 0 && (
+                <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                    {results.map((r) => (
+                        <button
+                            key={r.id}
+                            type="button"
+                            disabled={pending}
+                            onClick={() => setChosen({id: r.id, name: r.name, sub: r.sub})}
+                            className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg bg-night-800/60 border border-night-700 hover:border-blue-500/50 transition-colors text-left"
+                        >
+                            {r.coverUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={r.coverUrl} alt="" className="w-7 h-7 rounded object-cover bg-night-900 shrink-0"/>
+                            ) : (
+                                <div className="w-7 h-7 rounded bg-night-900 shrink-0"/>
+                            )}
+                            <span className="min-w-0">
+                                <span className="block text-xs text-white truncate">{r.name}</span>
+                                <span className="block text-[10px] text-zinc-400 truncate">{r.sub}</span>
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            <div className="flex gap-2 items-center">
+                <input
+                    type="text"
+                    value={manual}
+                    onChange={(e) => setManual(e.target.value)}
+                    disabled={pending}
+                    placeholder="…or paste a Spotify link / ID"
+                    className="w-full px-2.5 py-1.5 rounded-lg bg-night-800 border border-night-700 text-white placeholder-zinc-500 text-sm font-mono focus:outline-none focus:border-blue-500"
+                />
+                <button
+                    type="button"
+                    disabled={pending || !manual.trim()}
+                    onClick={() => setChosen({id: manual.trim(), name: "Custom link", sub: kind})}
+                    className="shrink-0 px-3 py-1.5 rounded-lg border border-night-700 text-zinc-300 text-xs font-semibold hover:bg-night-800 disabled:opacity-50 transition-colors"
+                >
+                    Use
+                </button>
+            </div>
+        </div>
     );
 }

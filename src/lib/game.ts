@@ -170,24 +170,30 @@ export function recordRound(
   const artistName = track.artists[0]?.name ?? "Unknown";
   const songName = track.name;
 
-  const byAuthor = { ...stats.byAuthor };
-  const bySong = { ...stats.bySong };
-
-  if (!byAuthor[artistName]) byAuthor[artistName] = { correct: 0, incorrect: 0 };
-  if (!bySong[songName]) bySong[songName] = { correct: 0, incorrect: 0 };
-
-  if (artistCorrect) byAuthor[artistName].correct++;
-  else byAuthor[artistName].incorrect++;
-
-  if (songCorrect) bySong[songName].correct++;
-  else bySong[songName].incorrect++;
+  // Fully immutable update: shallow-copy every nested record. Mutating the
+  // previous state's nested objects is unsafe (React may invoke state
+  // updaters more than once, double-counting rounds and corrupting stats).
+  const prevAuthor = stats.byAuthor[artistName] ?? { correct: 0, incorrect: 0 };
+  const prevSong = stats.bySong[songName] ?? { correct: 0, incorrect: 0 };
 
   return {
     totalRounds: stats.totalRounds + 1,
     correctRounds: stats.correctRounds + (songCorrect && artistCorrect ? 1 : 0),
     authorCorrect: stats.authorCorrect + (artistCorrect ? 1 : 0),
     songCorrect: stats.songCorrect + (songCorrect ? 1 : 0),
-    byAuthor,
-    bySong,
+    byAuthor: {
+      ...stats.byAuthor,
+      [artistName]: {
+        correct: prevAuthor.correct + (artistCorrect ? 1 : 0),
+        incorrect: prevAuthor.incorrect + (artistCorrect ? 0 : 1),
+      },
+    },
+    bySong: {
+      ...stats.bySong,
+      [songName]: {
+        correct: prevSong.correct + (songCorrect ? 1 : 0),
+        incorrect: prevSong.incorrect + (songCorrect ? 0 : 1),
+      },
+    },
   };
 }

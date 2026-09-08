@@ -70,3 +70,36 @@ export async function updateSpotifyCredentials(
       : "Spotify credentials saved.",
   };
 }
+
+const USERNAME_PATTERN = /^[a-zA-Z0-9_]{2,24}$/;
+
+/** Updates the user's display nickname (username). */
+export async function updateUsername(
+  _prev: SettingActionResult,
+  formData: FormData
+): Promise<SettingActionResult> {
+  const username = String(formData.get("username") ?? "").trim();
+
+  if (!USERNAME_PATTERN.test(username)) {
+    return {
+      error: "Username must be 2–24 characters (letters, numbers, underscores).",
+      success: null,
+    };
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "You must be signed in.", success: null };
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ username })
+    .eq("id", user.id);
+
+  if (error) return { error: error.message, success: null };
+
+  revalidatePath("/settings");
+  return { error: null, success: "Nickname updated." };
+}

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { resolveSpotifyCredentials } from "@/lib/spotify-credentials";
 import { Database } from "@/types/database";
 
 type Tables = Database["public"]["Tables"];
@@ -21,13 +22,6 @@ const EXPIRY_MARGIN_SECONDS = 60;
  * Access tokens expire, refresh tokens are long-lived. Cache invalidates on restart.
  */
 const accessTokenCache = new Map<string, { token: string; expiresAt: number }>();
-
-function getEnvCredentials() {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
-  if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret };
-}
 
 /**
  * Returns the user's stored OAuth refresh token, or null if they haven't connected.
@@ -97,30 +91,16 @@ export async function hasSpotifyToken(userId: string): Promise<boolean> {
  * personal credentials).
  */
 async function exchangeRefreshToken(refreshToken: string, userId: string): Promise<TokenResponse> {
-  const serverSupabase = createClient();
-
-  // Fetch the user's personal credentials (their own Spotify app credentials)
-  const { data: profile } = await serverSupabase
-    .from("profiles")
-    .select("spotify_client_id, spotify_client_secret")
-    .eq("id", userId)
-    .single();
-
-  let clientId: string | undefined;
-  let clientSecret: string | undefined;
-
-  if (profile?.spotify_client_id && profile?.spotify_client_secret) {
-    clientId = profile.spotify_client_id;
-    clientSecret = profile.spotify_client_secret;
-  } else {
-    // Fall back to env credentials (admin-configured global app)
-    const env = getEnvCredentials();
-    if (!env) {
-      throw new Error("No Spotify credentials found — set SPOTIFY_CLIENT_ID/SECRET or add personal credentials in Settings");
-    }
-    clientId = env.clientId;
-    clientSecret = env.clientSecret;
+  // Refreshing must use the SAME client id/secret pair that originally issued
+  // the refresh token. resolveSpotifyCredentials mirrors the priority used by
+  // /auth/spotify-connect (personal → group → env), so tokens obtained via
+  // inherited group credentials can be refreshed too.
+  const { credentials } = await resolveSpotifyCredentials();
+  if (!credentials) {
+    throw new Error("No Spotify credentials found — add personal credentials in Settings or join a group that has them.");
   }
+  const clientId = credentials.clientId;
+  const clientSecret = credentials.clientSecret;
 
   const body = new URLSearchParams({
     grant_type: "refresh_token",

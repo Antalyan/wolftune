@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { SPOTIFY_SCOPES } from "@/lib/spotify-connect";
+import { resolveSpotifyCredentials } from "@/lib/spotify-credentials";
+import { resolveSiteUrl } from "@/lib/site-url";
 
 /**
  * Starts the per-user Spotify OAuth flow:
@@ -18,22 +20,21 @@ export async function GET(request: Request) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("spotify_client_id")
-    .eq("id", user.id)
-    .maybeSingle();
+  // OAuth may be started with ANY available credentials — personal, inherited
+  // group credentials, or env vars. The refresh flow uses the same priority
+  // (see spotify-user-token), so group-credential users can connect too.
+  const { credentials } = await resolveSpotifyCredentials();
 
-  if (!profile?.spotify_client_id) {
+  if (!credentials) {
     return NextResponse.redirect(new URL("/settings?spotify=need_credentials", request.url));
   }
 
   const state = crypto.randomUUID();
-  const origin = process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3000";
+  const origin = resolveSiteUrl(request);
   const redirectUri = `${origin}/auth/spotify-callback`;
 
   const params = new URLSearchParams({
-    client_id: profile.spotify_client_id,
+    client_id: credentials.clientId,
     response_type: "code",
     redirect_uri: redirectUri,
     state,

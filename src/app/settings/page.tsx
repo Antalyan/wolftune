@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { WolfMascot } from "@/components/WolfMascot";
 import { Settings as SettingsIcon } from "lucide-react";
 import { CredentialsForm } from "./CredentialsForm";
+import { UsernameForm } from "./UsernameForm";
 import { disconnectSpotify } from "./actions";
 import { ConnectSpotifyButton } from "@/components/ConnectSpotifyButton";
 
@@ -92,6 +93,17 @@ export default async function SettingsPage({
           {status.text}
         </div>
       )}
+
+      <section className="mb-8">
+        <h2 className="text-lg font-semibold text-white mb-3">Profile</h2>
+        <p className="text-xs text-zinc-400 mb-4 leading-relaxed">
+          Your nickname is what your group sees on rating plans, leaderboards and the
+          members list.
+        </p>
+        <div className="bg-night-800/60 border border-night-700 rounded-xl p-4">
+          <UsernameForm currentUsername={profile?.username ?? null} />
+        </div>
+      </section>
 
       <section className="mb-8">
         <h2 className="text-lg font-semibold text-white mb-3">Spotify connection</h2>

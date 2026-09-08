@@ -16,10 +16,38 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { trackId, songCorrect, artistCorrect, newDifficulty } = body;
+  const {
+    trackId,
+    trackName,
+    artistName,
+    albumName,
+    coverUrl,
+    songCorrect,
+    artistCorrect,
+    newDifficulty,
+  } = body;
 
   if (!trackId || newDifficulty == null) {
     return NextResponse.json({ error: "Missing required fields." }, { status: 400 });
+  }
+
+  // Cache the track into the catalog so the game-history page can show its
+  // name/artist/cover (best-effort; the catalog is denormalized, not a source
+  // of truth). album_spotify_id is left null to avoid an FK to an uncached album.
+  if (trackName) {
+    const { error: cacheError } = await supabase.from("music_tracks").upsert(
+      {
+        spotify_id: trackId,
+        name: trackName,
+        artist_name: artistName ?? "Unknown",
+        album_name: albumName ?? null,
+        cover_url: coverUrl ?? null,
+      },
+      { onConflict: "spotify_id" }
+    );
+    if (cacheError) {
+      console.error("[game-result] track cache failed:", cacheError.message);
+    }
   }
 
   // Upsert difficulty
